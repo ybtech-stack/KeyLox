@@ -28,10 +28,12 @@ class ComposeActivity : BaseActivity() {
     private lateinit var binding: ActivityComposeBinding
     private lateinit var repo: Repo
     private var contacts: List<ContactsHelper.Contact> = emptyList()
+    private var contactGroups: List<ContactsHelper.ContactGroup> = emptyList()
     private val recipients = ArrayList<String>()
     private var groupMode = GroupMode.BROADCAST
     private val pendingAttachments = ArrayList<Triple<String, String, String>>()
     private lateinit var suggestionAdapter: SuggestionAdapter
+    private var browseAllRecipients = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,15 +88,38 @@ class ComposeActivity : BaseActivity() {
             binding.recipientInput, binding.recipientChips,
             binding.btnGroupMode, binding.attachChip
         )
+        configureComposeActionFocus()
+        binding.bodyInput.setOnKeyListener { _, keyCode, event ->
+            keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                KeypadNavigation.handleMove(
+                    event, KeyEvent.KEYCODE_DPAD_DOWN
+                ) { binding.btnSchedule }
+        }
         // compose body: NO focus ring at all (it never tracked the text
         // reliably). The shaded box background is the field's own visual and
         // grows with the text; the blinking cursor marks focus.
 
         lifecycleScope.launch {
-            contacts = withContext(Dispatchers.IO) { ContactsHelper.loadAll(this@ComposeActivity) }
+            val loaded = withContext(Dispatchers.IO) {
+                ContactsHelper.loadAll(this@ComposeActivity) to
+                    ContactsHelper.loadGroups(this@ComposeActivity)
+            }
+            contacts = loaded.first
+            contactGroups = loaded.second
+            if (intent.getBooleanExtra(EXTRA_SHOW_RECIPIENT_PICKER, false) &&
+                recipients.isEmpty() && binding.recipientInput.text.isNullOrBlank()
+            ) {
+                browseAllRecipients = true
+                filterSuggestions("")
+            }
         }
 
         handleIncomingIntent()
+        stageForwardedAttachments()
+        if (intent.getBooleanExtra(EXTRA_SHOW_RECIPIENT_PICKER, false)) {
+            binding.composeTitle.setText(R.string.forward_to)
+            binding.recipientInput.setHint(R.string.search_contacts_or_groups)
+        }
         updateRecipientLabel()
         binding.recipientInput.requestFocus()
     }
@@ -202,7 +227,7 @@ class ComposeActivity : BaseActivity() {
     }
 
     private fun filterSuggestions(q: String) {
-        if (q.isBlank()) {
+        if (q.isBlank() && !browseAllRecipients) {
             suggestionAdapter.submit(emptyList())
             setSuggestionsShown(false)
             return
@@ -216,10 +241,11 @@ class ComposeActivity : BaseActivity() {
         // plain contains.
         val qd = qDigits.length >= 2
         val t9on = prefs.t9ContactMatch
-        fun rank(c: ContactsHelper.Contact): Int {
-            val n = c.name.lowercase()
-            val t = t9Of(c.name)
-            val num = c.number.filter { it.isDigit() }
+        fun rank(name: String, number: String): Int {
+            if (q.isBlank()) return 0
+            val n = name.lowercase()
+            val t = t9Of(name)
+            val num = number.filter { it.isDigit() }
             val words = n.split(wordSplit).filter { it.isNotBlank() }
             val tWords = t.split(wordSplit).filter { it.isNotBlank() }
             return when {
@@ -231,12 +257,25 @@ class ComposeActivity : BaseActivity() {
                 else -> 2
             }
         }
-        val base = contacts.filter { c ->
-            c.name.lowercase().contains(lower) ||
+        val contactMatches = contacts.filter { c ->
+            q.isBlank() || c.name.lowercase().contains(lower) ||
                 (qd && (
                     c.number.filter { it.isDigit() }.contains(qDigits) ||
                         (t9on && t9Of(c.name).contains(qDigits))))
-        }.sortedBy { rank(it) }
+        }.sortedBy { rank(it.name, it.number) }
+            .map { RecipientSuggestion(it.name, it.number, listOf(it.number)) }
+        val groupMatches = contactGroups.filter { group ->
+            q.isBlank() || group.name.lowercase().contains(lower) ||
+                (qd && t9on && t9Of(group.name).contains(qDigits))
+        }.sortedBy { rank(it.name, "") }
+            .map { group ->
+                RecipientSuggestion(
+                    group.name,
+                    getString(R.string.contact_group_recipients, group.numbers.size),
+                    group.numbers
+                )
+            }
+        val base = groupMatches + contactMatches
         suggestionAdapter.hlQuery = lower
         suggestionAdapter.hlDigits = qDigits
         suggestionAdapter.hlT9 = t9on
@@ -245,9 +284,10 @@ class ComposeActivity : BaseActivity() {
         val typed = q.trim()
         val typedOk = typed.contains("@") || typed.count { it.isDigit() } >= 3
         val matches = if (typedOk && base.none {
-                PhoneUtils.normalize(it.number) == PhoneUtils.normalize(typed)
+                it.numbers.size == 1 &&
+                    PhoneUtils.normalize(it.numbers.first()) == PhoneUtils.normalize(typed)
             }) {
-            listOf(ContactsHelper.Contact(getString(R.string.add_number_row), typed)) + base
+            listOf(RecipientSuggestion(getString(R.string.add_number_row), typed, listOf(typed))) + base
         } else base
         suggestionAdapter.submit(matches)
         // BACK-minimized stays minimized only while the typed query is
@@ -258,16 +298,46 @@ class ComposeActivity : BaseActivity() {
         setSuggestionsShown(!(matches.isEmpty() || suggestionsSuppressed))
     }
 
-    private fun pick(c: ContactsHelper.Contact) {
-        if (recipients.none { PhoneUtils.normalize(it) == PhoneUtils.normalize(c.number) }) {
-            recipients.add(c.number)
+    private fun pick(suggestion: RecipientSuggestion) {
+        suggestion.numbers.forEach { number ->
+            if (recipients.none { PhoneUtils.normalize(it) == PhoneUtils.normalize(number) }) {
+                recipients.add(number)
+            }
         }
+        browseAllRecipients = false
         binding.recipientInput.setText("")
         suggestionAdapter.submit(emptyList())
         binding.suggestionList.visibility = View.GONE
         updateRecipientLabel()
         // keep typing where the user was — not on the back arrow
         binding.recipientInput.requestFocus()
+    }
+
+    private fun stageForwardedAttachments() {
+        val messageId = intent.getLongExtra(EXTRA_FORWARD_MESSAGE_ID, -1L)
+        if (messageId < 0) return
+        lifecycleScope.launch {
+            val parts = repo.db.parts().byMessage(messageId)
+            val copies = withContext(Dispatchers.IO) {
+                parts.mapNotNull { part ->
+                    try {
+                        val source = java.io.File(part.filePath)
+                        val dir = java.io.File(filesDir, "parts").apply { mkdirs() }
+                        val safeName = part.fileName
+                            .replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(80)
+                        val copy = java.io.File(
+                            dir, "fwd_${System.currentTimeMillis()}_${part.id}_$safeName"
+                        )
+                        source.copyTo(copy, overwrite = true)
+                        Triple(copy.absolutePath, part.mimeType, part.fileName)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
+            pendingAttachments.addAll(copies)
+            updateAttachChip()
+        }
     }
 
     private fun addTypedRecipient() {
@@ -496,7 +566,7 @@ class ComposeActivity : BaseActivity() {
                 suppressedQuery = binding.recipientInput.text?.toString().orEmpty()
                 setSuggestionsShown(false)
                 // focus returns to the typing box, not the back arrow
-                binding.recipientInput.requestFocus()
+                KeypadNavigation.focus(binding.recipientInput)
             }
             return true
         }
@@ -513,7 +583,7 @@ class ComposeActivity : BaseActivity() {
                     val v = binding.suggestionList
                         .findViewHolderForAdapterPosition(last)?.itemView
                     if (v != null) {
-                        v.requestFocus()
+                        KeypadNavigation.focus(v)
                         v.requestRectangleOnScreen(
                             android.graphics.Rect(0, 0, v.width, v.height), false
                         )
@@ -541,7 +611,7 @@ class ComposeActivity : BaseActivity() {
                 val last = (binding.suggestionList.adapter?.itemCount ?: 0) - 1
                 val next = if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) pos + 1 else pos - 1
                 if (pos == 0 && next < 0) {
-                    binding.recipientInput.requestFocus()
+                    KeypadNavigation.focus(binding.recipientInput)
                     return true
                 }
                 if (pos >= 0 && next in 0..last) {
@@ -555,7 +625,7 @@ class ComposeActivity : BaseActivity() {
                         val v = binding.suggestionList
                             .findViewHolderForAdapterPosition(next)?.itemView
                         if (v != null) {
-                            v.requestFocus()
+                            KeypadNavigation.focus(v)
                             v.requestRectangleOnScreen(
                                 android.graphics.Rect(0, 0, v.width, v.height), false
                             )
@@ -573,27 +643,145 @@ class ComposeActivity : BaseActivity() {
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (binding.btnBack.hasFocus() && chipsVisible &&
-                        binding.recipientChips.requestFocus()
+                        KeypadNavigation.focus(binding.recipientChips)
                     ) return true
                     if (binding.recipientChips.hasFocus() &&
-                        binding.recipientInput.requestFocus()
+                        KeypadNavigation.focus(binding.recipientInput)
                     ) return true
+                    if (binding.recipientInput.hasFocus() &&
+                        binding.suggestionList.visibility == View.VISIBLE &&
+                        focusSuggestion(0)
+                    ) return true
+                    if (binding.recipientInput.hasFocus() &&
+                        binding.suggestionList.visibility != View.VISIBLE
+                    ) {
+                        val target = when {
+                            binding.btnGroupMode.isShown -> binding.btnGroupMode
+                            binding.attachChip.isShown -> binding.attachChip
+                            else -> binding.bodyInput
+                        }
+                        if (KeypadNavigation.focus(target)) return true
+                    }
+                    if (binding.btnGroupMode.hasFocus()) {
+                        val target = if (binding.attachChip.isShown)
+                            binding.attachChip else binding.bodyInput
+                        if (KeypadNavigation.focus(target)) return true
+                    }
+                    if (binding.attachChip.hasFocus() &&
+                        KeypadNavigation.focus(binding.bodyInput)
+                    ) return true
+                    if (binding.bodyInput.hasFocus()) {
+                        KeypadNavigation.focus(binding.btnSchedule)
+                        return true
+                    }
+                    if (binding.btnSchedule.hasFocus() && focusBottomComposeAction()) return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     if (binding.recipientInput.hasFocus() && chipsVisible &&
-                        binding.recipientChips.requestFocus()
+                        KeypadNavigation.focus(binding.recipientChips)
                     ) return true
                     if (binding.recipientChips.hasFocus() &&
-                        binding.btnBack.requestFocus()
+                        KeypadNavigation.focus(binding.btnBack)
                     ) return true
                     if (binding.btnGroupMode.hasFocus() &&
-                        binding.recipientInput.requestFocus()
+                        KeypadNavigation.focus(binding.recipientInput)
                     ) return true
+                    if (binding.attachChip.hasFocus()) {
+                        val target = if (binding.btnGroupMode.isShown)
+                            binding.btnGroupMode else binding.recipientInput
+                        if (KeypadNavigation.focus(target)) return true
+                    }
+                    if (binding.bodyInput.hasFocus()) {
+                        val layout = binding.bodyInput.layout
+                        val selection = binding.bodyInput.selectionStart.coerceAtLeast(0)
+                        val line = if (layout != null) layout.getLineForOffset(selection) else 0
+                        if (line == 0) {
+                            val target = when {
+                                binding.attachChip.isShown -> binding.attachChip
+                                binding.btnGroupMode.isShown -> binding.btnGroupMode
+                                else -> binding.recipientInput
+                            }
+                            if (KeypadNavigation.focus(target)) return true
+                        }
+                    }
+                    if (binding.btnSchedule.hasFocus() &&
+                        KeypadNavigation.focus(binding.bodyInput)
+                    ) return true
+                    if (bottomComposeActionHasFocus() &&
+                        KeypadNavigation.focus(binding.btnSchedule)
+                    ) return true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (moveBottomComposeAction(-1)) return true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (moveBottomComposeAction(1)) return true
                 }
             }
         }
         return super.dispatchKeyEvent(event)
     }
+
+    override fun onResume() {
+        super.onResume()
+        configureComposeActionFocus()
+    }
+
+    private fun configureComposeActionFocus() {
+        val enabled = softkeys?.shouldShow() == true
+        listOf(binding.btnSchedule, binding.btnComposeAttach, binding.btnStart).forEach { button ->
+            button.isFocusable = true
+            button.isFocusableInTouchMode = true
+        }
+        listOf(binding.softkeyBar.softLeft, binding.softkeyBar.softRight).forEach { button ->
+            button.isFocusable = enabled
+            button.isFocusableInTouchMode = enabled
+            button.isClickable = enabled
+        }
+        binding.softkeyBar.softCenter.isFocusable = false
+        if (enabled) {
+            ThemeUtils.applyFocusHighlight(
+                binding.softkeyBar.softLeft, binding.softkeyBar.softRight
+            )
+        }
+    }
+
+    private fun focusBottomComposeAction(): Boolean {
+        val target = bottomComposeActions().firstOrNull()
+        return KeypadNavigation.focus(target)
+    }
+
+    private fun moveBottomComposeAction(direction: Int): Boolean {
+        val actions = bottomComposeActions()
+        val current = actions.indexOfFirst { it.hasFocus() }
+        if (current < 0) return false
+        val next = (current + direction).coerceIn(actions.indices)
+        return next == current || KeypadNavigation.focus(actions[next])
+    }
+
+    private fun bottomComposeActions(): List<View> =
+        if (softkeys?.shouldShow() == true) {
+            listOf(binding.softkeyBar.softLeft, binding.softkeyBar.softRight)
+                .filter { it.isShown && it.isFocusable && it.isEnabled && it.text.isNotBlank() }
+        } else {
+            listOf(binding.btnComposeAttach, binding.btnStart)
+                .filter { it.isShown && it.isFocusable && it.isEnabled }
+        }
+
+    private fun focusSuggestion(position: Int): Boolean {
+        if (position !in 0 until (binding.suggestionList.adapter?.itemCount ?: 0)) return false
+        binding.suggestionList.scrollToPosition(position)
+        binding.suggestionList.post {
+            KeypadNavigation.focus(
+                binding.suggestionList.findViewHolderForAdapterPosition(position)?.itemView
+            )
+        }
+        return true
+    }
+
+    private fun bottomComposeActionHasFocus(): Boolean =
+        binding.btnComposeAttach.hasFocus() || binding.btnStart.hasFocus() ||
+            binding.softkeyBar.softLeft.hasFocus() || binding.softkeyBar.softRight.hasFocus()
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -657,10 +845,13 @@ class ComposeActivity : BaseActivity() {
 
     private fun updateAttachChip() {
         if (pendingAttachments.isEmpty()) {
+            savedAttachChipVis = View.GONE
             binding.attachChip.visibility = View.GONE
             return
         }
-        binding.attachChip.visibility = View.VISIBLE
+        savedAttachChipVis = View.VISIBLE
+        binding.attachChip.visibility =
+            if (binding.suggestionList.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         binding.attachChip.text =
             if (pendingAttachments.size == 1)
                 getString(R.string.attached_label, pendingAttachments[0].third)
@@ -769,6 +960,19 @@ class ComposeActivity : BaseActivity() {
             android.widget.Toast.makeText(this, R.string.no_recipients, android.widget.Toast.LENGTH_SHORT).show()
             return
         }
+        if (recipients.size > 1 && groupMode == GroupMode.BROADCAST) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.confirm_broadcast_title)
+                .setMessage(getString(R.string.confirm_broadcast_message, recipients.size))
+                .setPositiveButton(R.string.softkey_send) { _, _ -> sendNow() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+            return
+        }
+        sendNow()
+    }
+
+    private fun sendNow() {
         val body = binding.bodyInput.text?.toString()?.trim().orEmpty()
         lifecycleScope.launch {
             val convo = repo.getOrCreateConversation(recipients)
@@ -788,13 +992,13 @@ class ComposeActivity : BaseActivity() {
         }
     }
 
-    class SuggestionAdapter(
-        private val onPick: (ContactsHelper.Contact) -> Unit
+    private class SuggestionAdapter(
+        private val onPick: (RecipientSuggestion) -> Unit
     ) : RecyclerView.Adapter<SuggestionAdapter.VH>() {
 
-        private var items: List<ContactsHelper.Contact> = emptyList()
+        private var items: List<RecipientSuggestion> = emptyList()
 
-        fun submit(list: List<ContactsHelper.Contact>) {
+        fun submit(list: List<RecipientSuggestion>) {
             items = list
             notifyDataSetChanged()
         }
@@ -821,13 +1025,24 @@ class ComposeActivity : BaseActivity() {
             val c = items[position]
             holder.b.suggestionName.text =
                 highlightName(c.name, hlQuery, if (hlT9) hlDigits else "")
-            holder.b.suggestionNumber.text = highlightNumber(c.number, hlDigits)
+            holder.b.suggestionNumber.text = highlightNumber(c.subtitle, hlDigits)
             holder.itemView.setOnClickListener { onPick(c) }
         }
+    }
+
+    companion object {
+        const val EXTRA_SHOW_RECIPIENT_PICKER = "show_recipient_picker"
+        const val EXTRA_FORWARD_MESSAGE_ID = "forward_message_id"
     }
 }
 
 // ---------- suggestion matching helpers ----------
+
+private data class RecipientSuggestion(
+    val name: String,
+    val subtitle: String,
+    val numbers: List<String>
+)
 
 private val wordSplit = Regex("[\\s,.\\-]+")
 

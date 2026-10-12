@@ -789,13 +789,10 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         }
     }
 
-    /** D-pad-center sends only when the softkey bar is off (otherwise a
-     *  softkey Send exists) and the compose box is focused. The on-screen
-     *  "Send" hint bar this used to drive is gone (user request) — the
-     *  BEHAVIOR stays as the escape hatch for keyboards that eat the right
-     *  D-pad as Space. */
+    /** The physical OK/center key sends while the reply box is focused. ENTER
+     *  remains available for line breaks in the multi-line input. */
     private fun sendHintActive(): Boolean =
-        softkeys?.shouldShow() != true && binding.composeInput.hasFocus()
+        composeMode && binding.composeInput.hasFocus()
 
     /** chars-over-segments counter in the corner of the compose box */
     private fun updateCharCounter() {
@@ -815,11 +812,14 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     }
 
     private fun updateSendHint() {
-        // when the softkeys are D-pad selectable and in compose mode, the right
-        // slot is Send — make D-pad-down from the text box land there first,
-        // instead of Android's default nearest pick (the attach slot on the left)
+        // When the softkeys are D-pad selectable, keep Android's fallback focus
+        // path aligned with whichever side currently contains Send.
         if (prefs.softkeysFocusable && composeMode && softkeys?.shouldShow() == true) {
-            binding.composeInput.nextFocusDownId = binding.softkeyBar.softRight.id
+            binding.composeInput.nextFocusDownId = if (prefs.sendOnLeft) {
+                binding.softkeyBar.softLeft.id
+            } else {
+                binding.softkeyBar.softRight.id
+            }
         } else {
             binding.composeInput.nextFocusDownId = View.NO_ID
         }
@@ -888,6 +888,40 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
             return true
         }
         if (softkeys?.handleKey(event) == true) return true
+
+        if (event.action == KeyEvent.ACTION_DOWN && composeMode &&
+            softkeys?.shouldShow() == true
+        ) {
+            when {
+                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
+                    binding.composeInput.hasFocus() -> {
+                    val sendAction = if (prefs.sendOnLeft) {
+                        binding.softkeyBar.softLeft
+                    } else {
+                        binding.softkeyBar.softRight
+                    }
+                    KeypadNavigation.focus(sendAction)
+                    return true
+                }
+                event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
+                    (binding.softkeyBar.softLeft.hasFocus() ||
+                        binding.softkeyBar.softRight.hasFocus()) -> {
+                    KeypadNavigation.focus(binding.composeInput)
+                    return true
+                }
+                event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
+                    binding.softkeyBar.softRight.hasFocus() -> {
+                    KeypadNavigation.focus(binding.softkeyBar.softLeft)
+                    return true
+                }
+                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT &&
+                    binding.softkeyBar.softLeft.hasFocus() &&
+                    binding.softkeyBar.softRight.text.isNotBlank() -> {
+                    KeypadNavigation.focus(binding.softkeyBar.softRight)
+                    return true
+                }
+            }
+        }
 
         // a tall first message (a picture): keep scrolling it into view on
         // D-pad-up; only once its top is fully visible may focus leave the
@@ -1782,39 +1816,10 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     }
 
     private fun forward(row: MessageRow) {
-        lifecycleScope.launch {
-            val convos = repo.db.conversations().visible()
-                .sortedByDescending { it.snippetDate }.take(15)
-            val labels = convos.map { it.displayTitle() } + getString(R.string.new_message)
-            AlertDialog.Builder(this@ThreadActivity)
-                .setTitle(R.string.forward_to)
-                .setItems(labels.toTypedArray()) { _, which ->
-                    if (which < convos.size) {
-                        lifecycleScope.launch { doForward(row, convos[which].id) }
-                    } else {
-                        startActivity(Intent(this@ThreadActivity, ComposeActivity::class.java)
-                            .putExtra("prefill_body", row.msg.body))
-                    }
-                }
-                .show()
-        }
-    }
-
-    private suspend fun doForward(row: MessageRow, destConvoId: Long) {
-        val part = row.parts.firstOrNull()
-        if (part != null) {
-            try {
-                val src = File(part.filePath)
-                val dir = File(filesDir, "parts").apply { mkdirs() }
-                val copy = File(dir, "fwd_${System.currentTimeMillis()}_${part.fileName}")
-                src.copyTo(copy, overwrite = true)
-                repo.sendAttachment(destConvoId, row.msg.body,
-                    listOf(Triple(copy.absolutePath, part.mimeType, part.fileName)))
-            } catch (_: Exception) {}
-        } else if (row.msg.body.isNotBlank()) {
-            repo.sendText(destConvoId, row.msg.body)
-        }
-        android.widget.Toast.makeText(this, R.string.forwarded, android.widget.Toast.LENGTH_SHORT).show()
+        startActivity(Intent(this, ComposeActivity::class.java)
+            .putExtra("prefill_body", row.msg.body)
+            .putExtra(ComposeActivity.EXTRA_FORWARD_MESSAGE_ID, row.msg.id)
+            .putExtra(ComposeActivity.EXTRA_SHOW_RECIPIENT_PICKER, true))
     }
 
     // ---------------- chat background ----------------

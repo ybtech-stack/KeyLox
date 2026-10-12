@@ -51,10 +51,10 @@ object BackupHelper {
         }
     }
 
-    /** Fallback for devices without a system file picker: write straight to Downloads/D-SMS.
+    /** Fallback for devices without a system file picker: write straight to Downloads/KeyMSG.
      *  Returns the file's display name, or null on failure. */
     suspend fun exportToDownloads(context: Context, progress: Progress = Progress { _, _ -> }): String? {
-        val name = "nova-backup-" + java.text.SimpleDateFormat(
+        val name = "keymsg-backup-" + java.text.SimpleDateFormat(
             "yyyyMMdd-HHmm", java.util.Locale.US
         ).format(java.util.Date()) + ".zip"
         return try {
@@ -63,7 +63,7 @@ object BackupHelper {
                     put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
                     put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/zip")
                     put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
-                        android.os.Environment.DIRECTORY_DOWNLOADS + "/D-SMS")
+                        android.os.Environment.DIRECTORY_DOWNLOADS + "/KeyMSG")
                 }
                 val uri = context.contentResolver.insert(
                     android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
@@ -76,7 +76,7 @@ object BackupHelper {
                 @Suppress("DEPRECATION")
                 val downloads = android.os.Environment
                     .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                val dir = File(downloads, "D-SMS").apply { mkdirs() }
+                val dir = File(downloads, "KeyMSG").apply { mkdirs() }
                 val f = File(dir, name)
                 val ok = f.outputStream().use { out -> exportToStream(context, out, progress) }
                 if (ok) name else null
@@ -86,7 +86,7 @@ object BackupHelper {
         }
     }
 
-    /** Backups reachable without a file picker: Downloads/D-SMS (this app's own
+    /** Backups reachable without a file picker: Downloads/KeyMSG (this app's own
      *  MediaStore entries on Android 10+, plain files on 9 and below). */
     fun findLocalBackups(context: Context): List<LocalBackup> {
         val out = ArrayList<LocalBackup>()
@@ -96,8 +96,9 @@ object BackupHelper {
                     android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                     arrayOf(android.provider.MediaStore.Downloads._ID,
                         android.provider.MediaStore.Downloads.DISPLAY_NAME),
-                    android.provider.MediaStore.Downloads.DISPLAY_NAME + " LIKE ?",
-                    arrayOf("nova-backup-%.zip"),
+                    android.provider.MediaStore.Downloads.DISPLAY_NAME + " LIKE ? OR " +
+                        android.provider.MediaStore.Downloads.DISPLAY_NAME + " LIKE ?",
+                    arrayOf("keymsg-backup-%.zip", "nova-backup-%.zip"),
                     android.provider.MediaStore.Downloads.DATE_ADDED + " DESC"
                 )?.use { c ->
                     while (c.moveToNext()) {
@@ -111,8 +112,11 @@ object BackupHelper {
                 @Suppress("DEPRECATION")
                 val downloads = android.os.Environment
                     .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-                for (dir in listOf(File(downloads, "D-SMS"), downloads)) {
-                    dir.listFiles { f -> f.name.startsWith("nova-backup-") && f.name.endsWith(".zip") }
+                for (dir in listOf(File(downloads, "KeyMSG"), downloads)) {
+                    dir.listFiles { file ->
+                        (file.name.startsWith("keymsg-backup-") ||
+                            file.name.startsWith("nova-backup-")) && file.name.endsWith(".zip")
+                    }
                         ?.sortedByDescending { it.lastModified() }
                         ?.forEach { out.add(LocalBackup(it.name, Uri.fromFile(it))) }
                 }

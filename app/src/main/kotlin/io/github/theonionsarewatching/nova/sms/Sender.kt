@@ -19,9 +19,9 @@ import java.io.File
 
 object Sender {
 
-    const val EXTRA_MESSAGE_ID = "dsms_message_id"
-    const val EXTRA_RECIPIENT = "dsms_recipient"
-    const val EXTRA_IS_LAST_PART = "dsms_is_last_part"
+    const val EXTRA_MESSAGE_ID = "keymsg_message_id"
+    const val EXTRA_RECIPIENT = "keymsg_recipient"
+    const val EXTRA_IS_LAST_PART = "keymsg_is_last_part"
 
     private fun piFlags(): Int {
         var flags = PendingIntent.FLAG_UPDATE_CURRENT

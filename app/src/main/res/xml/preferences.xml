@@ -130,17 +130,6 @@
             android:key="open_softkeys_settings"
             android:title="@string/pref_softkey_settings"
             android:summary="@string/pref_softkey_settings_summary" />
-        <Preference
-            app:iconSpaceReserved="false"
-            android:key="check_updates"
-            android:title="@string/pref_check_updates" />
-        <SwitchPreferenceCompat
-            app:singleLineTitle="false"
-            app:iconSpaceReserved="false"
-            android:key="delete_apk_after_update"
-            android:title="@string/pref_delete_apk"
-            android:summary="@string/pref_delete_apk_summary"
-            android:defaultValue="true" />
     </PreferenceCategory>
 
     <PreferenceCategory app:iconSpaceReserved="false" android:title="@string/settings_advanced">

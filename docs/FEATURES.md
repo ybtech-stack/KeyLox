@@ -4,9 +4,11 @@
 |---|---|
 | Conversation list, long-press menu | `ui/MainActivity.kt` (`convoOptions`) |
 | Thread view, in-thread options | `ui/ThreadActivity.kt` (`threadOptions`) — mirrors convoOptions |
-| Compose (new message), group-mode picker | `ui/ComposeActivity.kt` |
-| D-pad navigation, hold-to-scroll, date bubble | `ui/Base.kt`, `ThreadActivity` |
+| Compose (new message), contact groups, broadcast confirmation | `ui/ComposeActivity.kt` |
+| Forward directly to searchable contacts/groups | `ThreadActivity.forward`, `ComposeActivity` |
+| D-pad navigation, touch-mode-safe focus, hold-to-scroll | `ui/KeypadNavigation.kt`, `ui/Base.kt`, `ThreadActivity` |
 | Softkey bar + physical mapping wizard | `ui/Base.kt` (`Softkeys`), `ui/settings/Settings.kt` (`SoftkeyConfigActivity`) |
+| Key code, scan code, repeat, and device diagnostics | `ui/settings/Settings.kt` (`SoftkeyConfigActivity`) |
 | Send-on-left layout | `ThreadActivity.applyComposeButtonLayout`, `ComposeActivity.updateComposeSoftkeys` |
 | T9 contact matching | `ui/MainActivity.kt` suggestion list + `util/ContactsHelper` |
 | Message windowing + loading banner | `ThreadActivity` + `MessageAdapter` |
@@ -21,5 +23,6 @@
 | Scheduled send, locked messages, recycle bin | `Repo` (alarms), entity flags |
 | Blocked keywords (modes, numbers, case) | `KeywordEntity`, Advanced settings |
 | Backup/restore | `data/BackupHelper.kt` (see BACKUP-FORMAT) |
-| Self-updater (GitHub releases) | `util/UpdateChecker.kt` — `releases/latest` redirect; prereleases invisible to users |
+| Self-updater (disabled for fork) | `util/UpdateChecker.kt` — set the fork repository after signed releases are configured |
 | Diagnostics ring buffer | `util/DiagLog` (Settings → export log) |
+| Contact/group provider cache + observer invalidation | `util/ContactsHelper`, `App` |

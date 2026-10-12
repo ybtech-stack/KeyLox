@@ -9,7 +9,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Telephony
-import androidx.room.withTransaction
 import android.telephony.SmsManager
 import io.github.theonionsarewatching.nova.sms.ScheduledSendReceiver
 import io.github.theonionsarewatching.nova.sms.Sender
@@ -2254,7 +2253,7 @@ class Repo private constructor(private val context: Context) {
     /** One-time import of the system SMS/MMS store into our DB. Reports progress 0..100. */
     @SuppressLint("Range")
     suspend fun importFromTelephony(onProgress: (Int) -> Unit) =
-        db.withTransaction { importFromTelephonyInner(onProgress) }
+        importFromTelephonyInner(onProgress)
 
     private suspend fun importFromTelephonyInner(onProgress: (Int) -> Unit) = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver

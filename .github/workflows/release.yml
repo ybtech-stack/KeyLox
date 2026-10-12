@@ -9,10 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      # secrets can't be referenced in `if:` expressions directly,
-      # but they CAN be evaluated into env vars — check the env var instead
-      HAS_SIGNING: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,8 +21,19 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Require release signing secrets
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KS_B64" || { echo "::error::Missing KEYSTORE_BASE64"; exit 1; }
+          test -n "$KS_PASS" || { echo "::error::Missing KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KS_ALIAS" || { echo "::error::Missing KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASS" || { echo "::error::Missing KEY_PASSWORD"; exit 1; }
+
       - name: Decode and verify keystore
-        if: env.HAS_SIGNING == 'true'
         env:
           KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -50,8 +57,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -n "$APKSIGNER" || { echo "::error::apksigner not found"; exit 1; }
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk NovaLox-${{ github.ref_name }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk KeyMSG-${{ github.ref_name }}.apk
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -60,5 +73,5 @@ jobs:
           # users = unchecking "pre-release" on GitHub (the in-app updater
           # follows releases/latest, which ignores prereleases)
           prerelease: true
-          files: NovaLox-${{ github.ref_name }}.apk
+          files: KeyMSG-${{ github.ref_name }}.apk
           generate_release_notes: true
