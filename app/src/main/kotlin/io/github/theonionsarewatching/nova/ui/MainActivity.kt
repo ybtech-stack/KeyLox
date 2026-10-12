@@ -136,6 +136,14 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
             askFirstRunPermissions()
             runOnboardingChain()
             loadConversations()
+            maybeCheckUpdates()
+            lifecycleScope.launch {
+                val current = try {
+                    packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+                } catch (_: Exception) { "0" }
+                io.github.theonionsarewatching.nova.util.UpdateChecker
+                    .cleanupInstalledUpdate(this@MainActivity, current)
+            }
             repo.refreshContactNames()
             if (binding.gateView.visibility == View.GONE && binding.convoList.childCount == 0) {
                 binding.btnCompose.requestFocus()
@@ -311,6 +319,43 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
 
     private fun openThread(convoId: Long) {
         startActivity(Intent(this, ThreadActivity::class.java).putExtra(ThreadActivity.EXTRA_CONVO_ID, convoId))
+    }
+
+    /** Quiet weekly update check; only speaks up when there is an update. */
+    private fun maybeCheckUpdates() {
+        val now = System.currentTimeMillis()
+        if (now - prefs.lastUpdateCheck < 7L * 24 * 60 * 60 * 1000) return
+        prefs.lastUpdateCheck = now
+        lifecycleScope.launch {
+            val current = try {
+                packageManager.getPackageInfo(packageName, 0).versionName ?: "0"
+            } catch (_: Exception) { "0" }
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                io.github.theonionsarewatching.nova.util.UpdateChecker.check(current)
+            }
+            val release = (result as?
+                io.github.theonionsarewatching.nova.util.UpdateChecker.Check.UpdateAvailable)?.release
+            if (release != null && release.tag == prefs.lastNotifiedUpdateTag) return@launch
+            if (release != null && !isFinishing) {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.update_available, release.tag))
+                    .setMessage(R.string.update_prompt)
+                    .setPositiveButton(R.string.download) { _, _ ->
+                        prefs.lastNotifiedUpdateTag = release.tag
+                        io.github.theonionsarewatching.nova.util.UpdateChecker
+                            .download(this@MainActivity, release)
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            R.string.update_downloading,
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    .setNegativeButton(R.string.later) { _, _ ->
+                        prefs.lastNotifiedUpdateTag = release.tag
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun setHeaderFocusable(on: Boolean) {

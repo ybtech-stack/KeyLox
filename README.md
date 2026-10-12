@@ -25,6 +25,7 @@ No app store needed. No Google account. Nothing leaves your phone.
 - Attach pictures, videos, audio, and contact cards — several at once; share
   into the app from the gallery
 - Whole-app resize from 70% to 150%, plus separate text size settings
+- Built-in weekly update checks and installer through signed GitHub releases
 - Backup and restore to a single file, including attachments; restore writes
   into the phone's message storage
 - Android contact-group recipients and keypad-accessible forwarding
@@ -53,8 +54,30 @@ unsigned unless these environment variables point to your private signing key:
 - `SIGNING_KEY_PASSWORD`
 
 Never commit the keystore or its passwords. Keep the same key permanently;
-Android accepts future KeyMSG updates only when they use that key. Automatic
-update checks are disabled until this fork has its own signed GitHub releases.
+Android accepts future KeyMSG updates only when they use that key.
+
+For GitHub release builds, add these repository secrets under **Settings →
+Secrets and variables → Actions**:
+
+- `KEYSTORE_BASE64`: the output of `base64 -w 0 /path/to/key-msg.jks`
+- `KEYSTORE_PASSWORD`: the keystore password
+- `KEY_ALIAS`: the signing-key alias
+- `KEY_PASSWORD`: the signing-key password
+
+The release workflow verifies the key, builds and verifies the signed APK, and
+attaches it to a GitHub release. Keystores, APKs, and signing-property files are
+excluded by `.gitignore`.
+
+## Updating
+
+KeyMSG checks the latest stable GitHub release about once a week when the app
+opens. If a newer version exists, it offers to download the signed APK and then
+opens Android's installer for confirmation. You can also check immediately from
+**Settings → Check for updates**. Releases created by the workflow start as
+prereleases; edit the tested release on GitHub and clear **Set as a pre-release**
+before users should receive it. Version `0.1.4` must be installed manually
+because earlier KeyMSG builds do not contain the updater; later stable releases
+will then be detected automatically.
 
 ## Moving to a new phone
 
@@ -80,9 +103,9 @@ the phone are kept without duplicates.
 
 ## Privacy
 
-Your messages stay on your phone. KeyMSG has no servers, no ads, no analytics,
-and makes no network connections except sending and receiving MMS through your
-carrier.
+Your messages stay on your phone. KeyMSG has no servers, no ads, and no
+analytics. Network connections are limited to sending and receiving MMS through
+your carrier and checking KeyMSG's public GitHub releases for updates.
 
 ## License
 
