@@ -415,8 +415,8 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
         val focusable = prefs.softkeysFocusable
         listOf(binding.softLeft, binding.softCenter, binding.softRight).forEach { v ->
             v.isFocusable = focusable
-            v.isClickable = focusable
         }
+        updateClickability()
         if (focusable && binding.softLeft.getTag(R.id.softkey_focus_wired) == null) {
             binding.softLeft.setTag(R.id.softkey_focus_wired, true)
             ThemeUtils.applyFocusHighlight(binding.softLeft, binding.softCenter, binding.softRight)
@@ -433,6 +433,14 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
         binding.softLeft.text = left ?: ""
         binding.softCenter.text = center ?: ""
         binding.softRight.text = right ?: ""
+        updateClickability()
+    }
+
+    private fun updateClickability() {
+        val shown = shouldShow()
+        binding.softLeft.isClickable = shown && leftAction != null
+        binding.softCenter.isClickable = shown && centerAction != null
+        binding.softRight.isClickable = shown && rightAction != null
     }
 
     /** Returns true when the event was consumed as a softkey. MENU maps to the menu action

@@ -18,7 +18,8 @@ import java.net.URL
  */
 object UpdateChecker {
 
-    private const val REPO = "theOnionsAreWatching/NovaLox"
+    // Set to the fork's GitHub "owner/repository" when KeyMSG has signed releases.
+    private const val REPO = ""
 
     data class Release(val tag: String, val apkUrl: String)
 
@@ -33,6 +34,7 @@ object UpdateChecker {
      *  the API allows only 60 requests/hour per IP, and users behind a shared
      *  filtering proxy exhaust that together). API JSON is the fallback. */
     fun check(currentVersionName: String): Check {
+        if (REPO.isBlank()) return Check.Failed
         val tag = latestTagViaRedirect() ?: latestTagViaAtom() ?: latestTagViaApi()
             ?: return Check.Failed
         return if (isNewer(tag, currentVersionName)) {
@@ -44,7 +46,7 @@ object UpdateChecker {
 
     /** Our release workflow names the asset deterministically. */
     private fun apkUrlFor(tag: String): String =
-        "https://github.com/$REPO/releases/download/v$tag/NovaLox-v$tag.apk"
+        "https://github.com/$REPO/releases/download/v$tag/KeyMSG-v$tag.apk"
 
     private fun tagFromUrl(url: String?): String? =
         url?.takeIf { it.contains("/releases/tag/") }
@@ -61,7 +63,7 @@ object UpdateChecker {
             conn.connectTimeout = 8000
             conn.readTimeout = 8000
             conn.instanceFollowRedirects = false
-            conn.setRequestProperty("User-Agent", "NovaLox-Updater")
+            conn.setRequestProperty("User-Agent", "KeyMSG-Updater")
             val code = conn.responseCode
             val location = conn.getHeaderField("Location")
             val finalUrl = conn.url?.toString()
@@ -79,7 +81,7 @@ object UpdateChecker {
                 .openConnection() as HttpURLConnection
             conn.connectTimeout = 8000
             conn.readTimeout = 8000
-            conn.setRequestProperty("User-Agent", "NovaLox-Updater")
+            conn.setRequestProperty("User-Agent", "KeyMSG-Updater")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
             Regex("/releases/tag/(v?[0-9][^\"'<]*)").find(body)
@@ -96,7 +98,7 @@ object UpdateChecker {
             conn.connectTimeout = 8000
             conn.readTimeout = 8000
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            conn.setRequestProperty("User-Agent", "NovaLox-Updater")
+            conn.setRequestProperty("User-Agent", "KeyMSG-Updater")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
             JSONObject(body).optString("tag_name").removePrefix("v").takeIf { it.isNotBlank() }
@@ -141,7 +143,7 @@ object UpdateChecker {
      *  shade) and prompt the install screen when it lands. */
     fun download(context: Context, release: Release) {
         try {
-            val fileName = "NovaLox-v${release.tag}.apk"
+            val fileName = "KeyMSG-v${release.tag}.apk"
             val req = DownloadManager.Request(Uri.parse(release.apkUrl))
                 .setTitle(fileName)
                 .setMimeType("application/vnd.android.package-archive")

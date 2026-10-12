@@ -1,4 +1,4 @@
-# NovaLox Architecture
+# KeyMSG Architecture
 
 Keypad-first SMS/MMS app. Min SDK 23, target 34. Room schema v8.
 Engine: vendored fork of `tibbi/android-smsmms` (in `com/klinker/...`) plus an

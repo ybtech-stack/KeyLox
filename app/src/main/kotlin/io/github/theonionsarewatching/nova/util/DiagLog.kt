@@ -12,13 +12,13 @@ object DiagLog {
 
     private const val MAX_BYTES = 64 * 1024
 
-    fun file(context: Context): File = File(context.filesDir, "novalox-log.txt")
+    fun file(context: Context): File = File(context.filesDir, "keymsg-log.txt")
 
     // writes happen off the calling thread — the diagnostics must not add
     // the very main-thread I/O jank they exist to find. Crashes still write
     // synchronously (the process is about to die; a posted write would be
     // lost).
-    private val writer = android.os.HandlerThread("nova-diaglog")
+    private val writer = android.os.HandlerThread("keymsg-diaglog")
         .apply { isDaemon = true; start() }
     private val writeHandler = android.os.Handler(writer.looper)
 

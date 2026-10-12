@@ -50,7 +50,7 @@ object Saver {
     ): String? {
         val root = sdAppDir(context) ?: return null
         return try {
-            val folder = File(root, "$dir/NovaLox").apply { mkdirs() }
+            val folder = File(root, "$dir/KeyMSG").apply { mkdirs() }
             var dest = File(folder, fileName)
             var n = 1
             while (dest.exists()) {
@@ -95,7 +95,7 @@ object Saver {
                         val values = ContentValues().apply {
                             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/NovaLox")
+                            put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/KeyMSG")
                         }
                         val uri = context.contentResolver.insert(sdCollection, values)
                         if (uri != null) {
@@ -117,7 +117,7 @@ object Saver {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/NovaLox")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$dir/KeyMSG")
                 }
                 val uri = context.contentResolver.insert(collection, values) ?: return null
                 context.contentResolver.openOutputStream(uri)?.use { out ->
@@ -127,7 +127,7 @@ object Saver {
             } else {
                 @Suppress("DEPRECATION")
                 val base = Environment.getExternalStoragePublicDirectory(dir)
-                val folder = File(base, "NovaLox").apply { mkdirs() }
+                val folder = File(base, "KeyMSG").apply { mkdirs() }
                 var dest = File(folder, fileName)
                 var n = 1
                 while (dest.exists()) {
@@ -148,7 +148,7 @@ object Saver {
         }
     }
 
-    /** Save a stored attachment to the user's Downloads/D-SMS folder. */
+    /** Save a stored attachment to the user's Downloads/KeyMSG folder. */
     fun saveToDownloads(context: Context, src: File, fileName: String, mimeType: String): Boolean {
         if (!src.exists()) return false
         if (wantSd(context)) {
@@ -160,7 +160,7 @@ object Saver {
                             put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                             put(MediaStore.Downloads.MIME_TYPE, mimeType)
                             put(MediaStore.Downloads.RELATIVE_PATH,
-                                Environment.DIRECTORY_DOWNLOADS + "/D-SMS")
+                                Environment.DIRECTORY_DOWNLOADS + "/KeyMSG")
                         }
                         val uri = context.contentResolver.insert(
                             MediaStore.Downloads.getContentUri(vol), values
@@ -183,7 +183,7 @@ object Saver {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                     put(MediaStore.Downloads.MIME_TYPE, mimeType)
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/D-SMS")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/KeyMSG")
                 }
                 val uri = context.contentResolver.insert(
                     MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
@@ -195,7 +195,7 @@ object Saver {
             } else {
                 @Suppress("DEPRECATION")
                 val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                val dir = File(downloads, "D-SMS").apply { mkdirs() }
+                val dir = File(downloads, "KeyMSG").apply { mkdirs() }
                 var dest = File(dir, fileName)
                 var n = 1
                 while (dest.exists()) {

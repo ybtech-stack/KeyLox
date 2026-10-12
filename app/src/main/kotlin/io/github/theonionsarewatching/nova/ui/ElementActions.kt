@@ -25,7 +25,7 @@ object ElementActions {
 
     fun copy(context: Context, value: String) {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("D-SMS", value))
+        cm.setPrimaryClip(ClipData.newPlainText("KeyMSG", value))
         Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
     }
 

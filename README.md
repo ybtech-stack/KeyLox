@@ -1,4 +1,4 @@
-# NovaLox
+# KeyMSG
 
 **A messaging app built for keypad phones.** Texts and picture messages, fully
 usable with just the D-pad — made with kosher phones, flip phones, and
@@ -25,34 +25,42 @@ No app store needed. No Google account. Nothing leaves your phone.
 - Attach pictures, videos, audio, and contact cards — several at once; share
   into the app from the gallery
 - Whole-app resize from 70% to 150%, plus separate text size settings
-- Built-in update check and installer that works behind filtered networks
 - Backup and restore to a single file, including attachments; restore writes
   into the phone's message storage
+- Android contact-group recipients and keypad-accessible forwarding
 
 ## Installing
 
 1. On the phone, open **[Releases](../../releases/latest)** and download the
-   `NovaLox-vX.Y.Z.apk` file.
+   `KeyMSG-vX.Y.Z.apk` file.
 2. Open the downloaded file. If the phone asks, allow installing from this
    source (one-time).
-3. Open NovaLox and follow the setup: make it the default messaging app, grant
+3. Open KeyMSG and follow the setup: make it the default messaging app, grant
    the permissions it asks for, map your softkeys (or skip), and let it import
    your existing messages.
 4. The import can run in the background — press **Run in background** and start
    using the app right away.
 
-## Updating
+## Building and signing
 
-NovaLox checks for updates about once a week and offers to download them. You
-can also check any time in **Settings → Check for updates**. The downloaded
-update file is cleaned up automatically after installing (Settings has a switch
-for that).
+KeyMSG is a separate app with the package ID `io.github.ybeck.keymsg`. Debug
+builds install as `io.github.ybeck.keymsg.debug`. Release builds are left
+unsigned unless these environment variables point to your private signing key:
+
+- `SIGNING_KEYSTORE_PATH`
+- `SIGNING_KEYSTORE_PASSWORD`
+- `SIGNING_KEY_ALIAS`
+- `SIGNING_KEY_PASSWORD`
+
+Never commit the keystore or its passwords. Keep the same key permanently;
+Android accepts future KeyMSG updates only when they use that key. Automatic
+update checks are disabled until this fork has its own signed GitHub releases.
 
 ## Moving to a new phone
 
 1. Old phone: **Settings → Back up messages** — save the file somewhere you can
    move it (memory card, computer, Downloads).
-2. New phone: install NovaLox, then **Settings → Restore from backup** and pick
+2. New phone: install KeyMSG, then **Settings → Restore from backup** and pick
    the file.
 
 Restore writes your messages into the phone's real message storage — they
@@ -72,13 +80,14 @@ the phone are kept without duplicates.
 
 ## Privacy
 
-Your messages stay on your phone. NovaLox has no servers, no ads, no analytics,
-and makes no network connections except checking this page for updates (and
-sending/receiving MMS through your carrier, of course).
+Your messages stay on your phone. KeyMSG has no servers, no ads, no analytics,
+and makes no network connections except sending and receiving MMS through your
+carrier.
 
 ## License
 
-NovaLox is free to use, copy, and share for **noncommercial purposes** —
+KeyMSG is a fork of NovaLox and is free to use, copy, and share for
+**noncommercial purposes** —
 personal use, family, schools, charities, and the like — under the
 [PolyForm Noncommercial License 1.0.0](LICENSE.md).
 

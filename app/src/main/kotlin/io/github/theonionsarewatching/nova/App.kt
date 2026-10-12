@@ -20,12 +20,12 @@ class App : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
-        // catches the freeze in the act: logs whenever the main thread stops
-        // responding, with the duration
-        io.github.theonionsarewatching.nova.util.Perf.startWatchdog(this)
         val debuggable =
             (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         if (debuggable) {
+            // catches the freeze in the act without keeping a watchdog thread
+            // alive in production builds
+            io.github.theonionsarewatching.nova.util.Perf.startWatchdog(this)
             // main-thread disk/DB work is the usual cause of a UI stall — have
             // the platform name the offender instead of us guessing
             android.os.StrictMode.setThreadPolicy(
@@ -104,6 +104,7 @@ class App : Application(), ImageLoaderFactory {
         // contact rename/add: refresh the cached names (throttled inside)
         val contactsObserver = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean) {
+                io.github.theonionsarewatching.nova.util.ContactsHelper.invalidateCache()
                 Repo.get(this@App).refreshContactNames()
             }
         }

@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.DSMS" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.KeyMSG" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent_blue</item>
         <item name="colorAccent">@color/accent_blue</item>
         <item name="android:textColorLink">@color/accent_blue</item>
-        <item name="alertDialogTheme">@style/DSMS.AlertDialog</item>
+        <item name="alertDialogTheme">@style/KeyMSG.AlertDialog</item>
     </style>
 
-    <style name="DSMS.AlertDialog" parent="ThemeOverlay.AppCompat.Dialog.Alert">
-        <item name="buttonBarPositiveButtonStyle">@style/DSMS.DialogButton</item>
-        <item name="buttonBarNegativeButtonStyle">@style/DSMS.DialogButton</item>
-        <item name="buttonBarNeutralButtonStyle">@style/DSMS.DialogButton</item>
+    <style name="KeyMSG.AlertDialog" parent="ThemeOverlay.AppCompat.Dialog.Alert">
+        <item name="buttonBarPositiveButtonStyle">@style/KeyMSG.DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/KeyMSG.DialogButton</item>
+        <item name="buttonBarNeutralButtonStyle">@style/KeyMSG.DialogButton</item>
         <item name="android:listChoiceBackgroundIndicator">@drawable/bg_focus_row</item>
     </style>
 
-    <style name="DSMS.DialogButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+    <style name="KeyMSG.DialogButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
         <item name="android:background">@drawable/bg_focus_pill</item>
         <item name="android:textColor">?attr/colorPrimary</item>
     </style>

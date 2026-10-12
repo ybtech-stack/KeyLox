@@ -13,5 +13,5 @@ dependencyResolutionManagement {
         maven { setUrl("https://jitpack.io") }
     }
 }
-rootProject.name = "D-SMS"
+rootProject.name = "KeyMSG"
 include(":app")

@@ -9,11 +9,11 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "io.github.theonionsarewatching.nova"
+        applicationId = "io.github.ybeck.keymsg"
         minSdk = 23
         targetSdk = 34
-        versionCode = 121
-        versionName = "0.9.114"
+        versionCode = 3
+        versionName = "0.1.2"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -33,7 +33,7 @@ android {
         release {
             isMinifyEnabled = false
             val ks = signingConfigs.getByName("release")
-            signingConfig = if (ks.storeFile != null) ks else signingConfigs.getByName("debug")
+            if (ks.storeFile != null) signingConfig = ks
         }
         debug {
             applicationIdSuffix = ".debug"

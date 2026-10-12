@@ -203,7 +203,7 @@ class SettingsActivity : BaseActivity() {
                 if (io.github.theonionsarewatching.nova.util.BackgroundTasks.running) {
                     attachTaskDialog(); return@find
                 }
-                val name = "nova-backup-" + java.text.SimpleDateFormat(
+                val name = "keymsg-backup-" + java.text.SimpleDateFormat(
                     "yyyyMMdd-HHmm", java.util.Locale.US
                 ).format(java.util.Date()) + ".zip"
                 val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -216,7 +216,7 @@ class SettingsActivity : BaseActivity() {
                     startActivityForResult(i, 301)
                 } catch (_: Exception) {
                     // no system file picker on this device (common on stripped ROMs):
-                    // write straight to Downloads/D-SMS instead
+                    // write straight to Downloads/KeyMSG instead
                     backupToDownloads()
                 }
             }
@@ -312,8 +312,8 @@ class SettingsActivity : BaseActivity() {
                     requireContext().packageManager
                         .getPackageInfo(requireContext().packageName, 0).versionName
                 } catch (_: Exception) { "" }
-                pref.summary = "NovaLox $version\nPolyForm Noncommercial 1.0.0\n" +
-                    "github.com/theOnionsAreWatching\nby theonionsarewatching"
+                pref.summary = "KeyMSG $version\nPolyForm Noncommercial 1.0.0\n" +
+                    "Fork of NovaLox by github.com/theOnionsAreWatching"
             }
             find("about_footer") {
                 // seven taps in a row, each within 3 seconds of the last
@@ -452,42 +452,10 @@ class SettingsActivity : BaseActivity() {
                 viewLifecycleOwner.lifecycleScope.launch {
                     val f = io.github.theonionsarewatching.nova.util.DiagLog.file(ctx)
                     val ok = f.exists() && io.github.theonionsarewatching.nova.ui.Saver
-                        .saveToDownloads(ctx, f, "novalox-log.txt", "text/plain")
+                        .saveToDownloads(ctx, f, "keymsg-log.txt", "text/plain")
                     Toast.makeText(ctx,
                         if (ok) R.string.log_saved else R.string.log_empty,
                         Toast.LENGTH_LONG).show()
-                }
-            }
-            find("check_updates") {
-                val ctx = requireContext()
-                Toast.makeText(ctx, R.string.checking_updates, Toast.LENGTH_SHORT).show()
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val current = try {
-                        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "0"
-                    } catch (_: Exception) { "0" }
-                    val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        io.github.theonionsarewatching.nova.util.UpdateChecker.check(current)
-                    }
-                    when (result) {
-                        is io.github.theonionsarewatching.nova.util.UpdateChecker.Check.UpToDate ->
-                            Toast.makeText(ctx,
-                                getString(R.string.up_to_date_detail, current, result.latestTag),
-                                Toast.LENGTH_LONG).show()
-                        is io.github.theonionsarewatching.nova.util.UpdateChecker.Check.Failed ->
-                            Toast.makeText(ctx, R.string.update_check_failed, Toast.LENGTH_LONG).show()
-                        is io.github.theonionsarewatching.nova.util.UpdateChecker.Check.UpdateAvailable -> {
-                            val release = result.release
-                            AlertDialog.Builder(ctx)
-                                .setTitle(getString(R.string.update_available, release.tag))
-                                .setMessage(R.string.update_prompt)
-                                .setPositiveButton(R.string.download) { _, _ ->
-                                    io.github.theonionsarewatching.nova.util.UpdateChecker.download(ctx, release)
-                                    Toast.makeText(ctx, R.string.update_downloading, Toast.LENGTH_LONG).show()
-                                }
-                                .setNegativeButton(R.string.later, null)
-                                .show()
-                        }
-                    }
                 }
             }
             find("resync") {
@@ -495,6 +463,7 @@ class SettingsActivity : BaseActivity() {
                 Toast.makeText(requireContext(), R.string.resync_started, Toast.LENGTH_SHORT).show()
             }
             find("refresh_contacts") {
+                io.github.theonionsarewatching.nova.util.ContactsHelper.invalidateCache()
                 Repo.get(requireContext()).refreshContactNames(force = true)
                 Toast.makeText(requireContext(), R.string.contacts_refreshing, Toast.LENGTH_SHORT).show()
             }
@@ -1172,6 +1141,8 @@ class SoftkeyConfigActivity : BaseActivity() {
     private var capturedRight = -1
     private var onboarding = false
     private var lastSeenCode = -1
+    private var lastSeenScanCode = 0
+    private var lastSeenRepeat = 0
     private lateinit var binding: ActivityListBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1225,7 +1196,14 @@ class SoftkeyConfigActivity : BaseActivity() {
     /** Shows the code of the last key press, even rejected ones — this is how a
      *  user (or someone helping them over adb) can identify an unusual softkey. */
     private fun lastSeenLine(): String =
-        if (lastSeenCode > 0) "\n\n" + getString(R.string.last_key_seen, lastSeenCode) else ""
+        if (lastSeenCode > 0) "\n\n" + getString(
+            R.string.last_key_seen_details,
+            KeyEvent.keyCodeToString(lastSeenCode),
+            lastSeenCode,
+            lastSeenScanCode,
+            lastSeenRepeat,
+            "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        ) else ""
 
     /** For phones whose softkeys aren't delivered normally: type the key code in. */
     private fun manualCodeDialog() {
@@ -1294,12 +1272,10 @@ class SoftkeyConfigActivity : BaseActivity() {
                 true else super.dispatchKeyEvent(event)
         }
         val code = event.keyCode
-        val navKeys = setOf(
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER
-        )
-        if (code != KeyEvent.KEYCODE_BACK && code !in navKeys) {
+        if (code != KeyEvent.KEYCODE_BACK) {
             lastSeenCode = code
+            lastSeenScanCode = event.scanCode
+            lastSeenRepeat = event.repeatCount
             render()
         }
         if (code == KeyEvent.KEYCODE_BACK) {

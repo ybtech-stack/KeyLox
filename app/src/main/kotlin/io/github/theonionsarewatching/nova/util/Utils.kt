@@ -255,6 +255,17 @@ object AudioSniff {
 object ContactsHelper {
 
     data class Contact(val name: String, val number: String, val photoUri: String = "")
+    data class ContactGroup(val name: String, val numbers: List<String>)
+
+    @Volatile private var contactCache: List<Contact>? = null
+    @Volatile private var groupCache: List<ContactGroup>? = null
+
+    fun invalidateCache() {
+        synchronized(this) {
+            contactCache = null
+            groupCache = null
+        }
+    }
 
     /** Lookup URI for viewing an existing contact, or null when unsaved. */
     fun lookupContactUri(context: Context, number: String): android.net.Uri? {
@@ -282,6 +293,13 @@ object ContactsHelper {
     /** Full phone contact list (name + number + photo), used for auto-suggest and caches. */
     fun loadAll(context: Context): List<Contact> {
         if (!hasPermission(context)) return emptyList()
+        contactCache?.let { return it }
+        return synchronized(this) {
+            contactCache ?: loadAllUncached(context).also { contactCache = it }
+        }
+    }
+
+    private fun loadAllUncached(context: Context): List<Contact> {
         val out = ArrayList<Contact>()
         val proj = arrayOf(
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
@@ -303,6 +321,94 @@ object ContactsHelper {
         } catch (_: Exception) {
         }
         return out
+    }
+
+    /** Android contact groups with one preferred phone number per member.
+     *  A contact can expose several phone rows; using all of them would send
+     *  duplicate messages to the same person, so super-primary/primary wins. */
+    fun loadGroups(context: Context): List<ContactGroup> {
+        if (!hasPermission(context)) return emptyList()
+        groupCache?.let { return it }
+        return synchronized(this) {
+            groupCache ?: loadGroupsUncached(context).also { groupCache = it }
+        }
+    }
+
+    private fun loadGroupsUncached(context: Context): List<ContactGroup> {
+
+        data class NumberChoice(val number: String, val superPrimary: Boolean, val primary: Boolean)
+
+        return try {
+            val phoneByContact = LinkedHashMap<Long, MutableList<NumberChoice>>()
+            val phoneProjection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.IS_SUPER_PRIMARY,
+                ContactsContract.CommonDataKinds.Phone.IS_PRIMARY
+            )
+            context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                phoneProjection, null, null, null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val number = cursor.getString(1)?.trim().orEmpty()
+                    if (number.isBlank()) continue
+                    phoneByContact.getOrPut(cursor.getLong(0)) { ArrayList() }.add(
+                        NumberChoice(number, cursor.getInt(2) != 0, cursor.getInt(3) != 0)
+                    )
+                }
+            }
+
+            val membersByGroup = LinkedHashMap<Long, MutableSet<Long>>()
+            context.contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID,
+                    ContactsContract.Data.CONTACT_ID
+                ),
+                ContactsContract.Data.MIMETYPE + " = ?",
+                arrayOf(ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE),
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    membersByGroup.getOrPut(cursor.getLong(0)) { LinkedHashSet() }
+                        .add(cursor.getLong(1))
+                }
+            }
+
+            val numbersByTitle = LinkedHashMap<String, MutableList<String>>()
+            context.contentResolver.query(
+                ContactsContract.Groups.CONTENT_URI,
+                arrayOf(ContactsContract.Groups._ID, ContactsContract.Groups.TITLE),
+                ContactsContract.Groups.DELETED + " = 0", null,
+                ContactsContract.Groups.TITLE + " COLLATE NOCASE"
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val title = cursor.getString(1)?.trim().orEmpty()
+                    if (title.isBlank()) continue
+                    val numbers = numbersByTitle.getOrPut(title) { ArrayList() }
+                    membersByGroup[cursor.getLong(0)].orEmpty().forEach { contactId ->
+                        val preferred = phoneByContact[contactId]
+                            ?.sortedWith(
+                                compareByDescending<NumberChoice> { it.superPrimary }
+                                    .thenByDescending { it.primary }
+                            )
+                            ?.firstOrNull()
+                            ?.number
+                        if (preferred != null && numbers.none {
+                                PhoneUtils.normalize(it) == PhoneUtils.normalize(preferred)
+                            }
+                        ) numbers.add(preferred)
+                    }
+                }
+            }
+
+            numbersByTitle.mapNotNull { (title, numbers) ->
+                numbers.takeIf { it.isNotEmpty() }?.let { ContactGroup(title, it.toList()) }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     fun lookupName(context: Context, address: String): String? {

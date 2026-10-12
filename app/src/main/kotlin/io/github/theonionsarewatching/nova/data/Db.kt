@@ -703,7 +703,7 @@ abstract class AppDb : RoomDatabase() {
     companion object {
         @Volatile private var instance: AppDb? = null
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "dsms.db")
+            instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "keymsg.db")
                 .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build().also { instance = it }
