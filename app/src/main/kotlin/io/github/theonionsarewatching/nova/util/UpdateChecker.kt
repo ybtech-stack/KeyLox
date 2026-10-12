@@ -18,8 +18,7 @@ import java.net.URL
  */
 object UpdateChecker {
 
-    // Set to the fork's GitHub "owner/repository" when KeyMSG has signed releases.
-    private const val REPO = ""
+    private const val REPO = "ybtech-stack/KeyLox"
 
     data class Release(val tag: String, val apkUrl: String)
 
@@ -34,8 +33,7 @@ object UpdateChecker {
      *  the API allows only 60 requests/hour per IP, and users behind a shared
      *  filtering proxy exhaust that together). API JSON is the fallback. */
     fun check(currentVersionName: String): Check {
-        if (REPO.isBlank()) return Check.Failed
-        val tag = latestTagViaRedirect() ?: latestTagViaAtom() ?: latestTagViaApi()
+        val tag = latestTagViaRedirect() ?: latestTagViaApi()
             ?: return Check.Failed
         return if (isNewer(tag, currentVersionName)) {
             Check.UpdateAvailable(Release(tag, apkUrlFor(tag)))
@@ -69,23 +67,6 @@ object UpdateChecker {
             val finalUrl = conn.url?.toString()
             conn.disconnect()
             tagFromUrl(location) ?: if (code == 200) tagFromUrl(finalUrl) else null
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /** Releases Atom feed: plain XML, no rate limit — third path for odd proxies. */
-    private fun latestTagViaAtom(): String? {
-        return try {
-            val conn = URL("https://github.com/$REPO/releases.atom")
-                .openConnection() as HttpURLConnection
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-            conn.setRequestProperty("User-Agent", "KeyMSG-Updater")
-            val body = conn.inputStream.bufferedReader().use { it.readText() }
-            conn.disconnect()
-            Regex("/releases/tag/(v?[0-9][^\"'<]*)").find(body)
-                ?.groupValues?.get(1)?.removePrefix("v")?.takeIf { it.isNotBlank() }
         } catch (_: Exception) {
             null
         }
