@@ -89,12 +89,8 @@ class ComposeActivity : BaseActivity() {
             binding.btnGroupMode, binding.attachChip
         )
         configureComposeActionFocus()
-        binding.bodyInput.setOnKeyListener { _, keyCode, event ->
-            keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                KeypadNavigation.handleMove(
-                    event, KeyEvent.KEYCODE_DPAD_DOWN
-                ) { binding.btnSchedule }
-        }
+        binding.bodyInput.preImeKeyHandler = ::handleBodyKey
+        binding.bodyInput.setOnKeyListener { _, _, event -> handleBodyKey(event) }
         // compose body: NO focus ring at all (it never tracked the text
         // reliably). The shaded box background is the field's own visual and
         // grows with the text; the blinking cursor marks focus.
@@ -557,6 +553,8 @@ class ComposeActivity : BaseActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (binding.bodyInput.hasFocus() && handleBodyKey(event)) return true
+
         // BACK while suggestions are up: minimize the list, stay on the screen
         if (event.keyCode == KeyEvent.KEYCODE_BACK &&
             binding.suggestionList.visibility == View.VISIBLE
@@ -720,6 +718,22 @@ class ComposeActivity : BaseActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleBodyKey(event: KeyEvent): Boolean = when (event.keyCode) {
+        KeyEvent.KEYCODE_DPAD_DOWN -> {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                KeypadNavigation.focus(binding.btnSchedule)
+            }
+            true
+        }
+        KeyEvent.KEYCODE_DPAD_CENTER -> {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                start()
+            }
+            true
+        }
+        else -> false
     }
 
     override fun onResume() {
