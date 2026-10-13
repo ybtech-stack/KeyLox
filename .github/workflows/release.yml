@@ -61,10 +61,7 @@ jobs:
         run: |
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
           test -n "$APKSIGNER" || { echo "::error::apksigner not found"; exit 1; }
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk KeyMSG-${{ github.ref_name }}.apk
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/KeyMSG-${{ github.ref_name }}.apk
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -73,5 +70,5 @@ jobs:
           # users = unchecking "pre-release" on GitHub (the in-app updater
           # follows releases/latest, which ignores prereleases)
           prerelease: true
-          files: KeyMSG-${{ github.ref_name }}.apk
+          files: app/build/outputs/apk/release/KeyMSG-${{ github.ref_name }}.apk
           generate_release_notes: true

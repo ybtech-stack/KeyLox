@@ -130,6 +130,15 @@
             android:key="open_softkeys_settings"
             android:title="@string/pref_softkey_settings"
             android:summary="@string/pref_softkey_settings_summary" />
+        <ListPreference
+            app:singleLineTitle="false"
+            app:iconSpaceReserved="false"
+            android:key="media_viewer"
+            android:title="@string/pref_media_viewer"
+            android:summary="%s"
+            android:entries="@array/media_viewer_entries"
+            android:entryValues="@array/media_viewer_values"
+            android:defaultValue="system" />
         <Preference
             app:iconSpaceReserved="false"
             android:key="check_updates"

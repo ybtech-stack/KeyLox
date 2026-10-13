@@ -124,7 +124,7 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
         // the other mode clears each thread's notification only when opened
         if (prefs.notifClearMode == "app") {
             try {
-                androidx.core.app.NotificationManagerCompat.from(this).cancelAll()
+                io.github.theonionsarewatching.nova.notify.NotificationHelper.cancelAll(this)
             } catch (_: Exception) {}
         }
         binding.searchRow.visibility = if (prefs.showSearchBar) View.VISIBLE else View.GONE

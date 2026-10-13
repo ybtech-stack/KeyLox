@@ -24,6 +24,8 @@ No app store needed. No Google account. Nothing leaves your phone.
   sending
 - Attach pictures, videos, audio, and contact cards — several at once; share
   into the app from the gallery
+- Choose the phone's system viewer or KeyMSG's built-in viewer for images and
+  videos; the system viewer is the default
 - Whole-app resize from 70% to 150%, plus separate text size settings
 - Built-in weekly update checks and installer through signed GitHub releases
 - Backup and restore to a single file, including attachments; restore writes

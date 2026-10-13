@@ -1,3 +1,5 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,8 +14,8 @@ android {
         applicationId = "io.github.ybeck.keymsg"
         minSdk = 23
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -54,6 +56,14 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
+    }
+
+    applicationVariants.all {
+        if (buildType.name == "release") {
+            outputs.all {
+                (this as BaseVariantOutputImpl).outputFileName = "KeyMSG-v$versionName.apk"
+            }
+        }
     }
 }
 
