@@ -1,5 +1,6 @@
 package io.github.theonionsarewatching.nova.notify
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -51,7 +52,7 @@ object NotificationHelper {
         val vibrate = effectiveVibrate(context, convo)
         val overridden = convo != null &&
             (convo.customTone.isNotBlank() || convo.vibrateMode != 0)
-        val key = (tone + "|" + vibrate + "|L2").hashCode()
+        val key = (tone + "|" + vibrate + "|L3").hashCode()
         val id = if (overridden) "$CONVO_PREFIX${convo!!.id}_$key" else "$DEFAULT_PREFIX$key"
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -63,6 +64,8 @@ object NotificationHelper {
                 // flip phones with a notification LED: blink for new messages
                 ch.enableLights(true)
                 ch.lightColor = android.graphics.Color.WHITE
+                ch.setShowBadge(true)
+                ch.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 if (!vibrate) ch.vibrationPattern = null
                 val attrs = android.media.AudioAttributes.Builder()
                     .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
@@ -137,13 +140,17 @@ object NotificationHelper {
             putExtra(ThreadActivity.EXTRA_CONVO_ID, convo.id)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
-        var flags = PendingIntent.FLAG_UPDATE_CURRENT
-        if (Build.VERSION.SDK_INT >= 23) flags = flags or PendingIntent.FLAG_IMMUTABLE
-        val contentPi = PendingIntent.getActivity(context, convo.id.toInt(), open, flags)
+        var pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION.SDK_INT >= 23) {
+            pendingIntentFlags = pendingIntentFlags or PendingIntent.FLAG_IMMUTABLE
+        }
+        val contentPi = PendingIntent.getActivity(
+            context, convo.id.toInt(), open, pendingIntentFlags
+        )
 
         val markRead = Intent(context, MarkReadReceiver::class.java).putExtra("convo_id", convo.id)
         val markReadPi = PendingIntent.getBroadcast(
-            context, (convo.id + 100_000).toInt(), markRead, flags
+            context, (convo.id + 100_000).toInt(), markRead, pendingIntentFlags
         )
 
         // MessagingStyle is required for Android Auto to read messages
@@ -155,7 +162,9 @@ object NotificationHelper {
         )
             .setConversationTitle(if (convo.isGroup) title else null)
             .addMessage(text, msg.date, sender)
-        val builder = NotificationCompat.Builder(context, ensureChannel(context, convo))
+        val channelId = ensureChannel(context, convo)
+        var publicContentIntent = contentPi
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
@@ -164,6 +173,8 @@ object NotificationHelper {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setNumber(1)
             .addAction(0, context.getString(R.string.action_mark_read), markReadPi)
             .addAction(run {
                 // inline reply: RemoteInput text box in the notification shade
@@ -236,25 +247,66 @@ object NotificationHelper {
             }
             if (convosWithUnread > 1) {
                 val home = Intent(context, io.github.theonionsarewatching.nova.ui.MainActivity::class.java)
-                    .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP }
-                builder.setContentIntent(PendingIntent.getActivity(context, 999, home, flags))
+                    .apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    }
+                publicContentIntent = PendingIntent.getActivity(
+                    context, 999, home, pendingIntentFlags
+                )
+                builder.setContentIntent(publicContentIntent)
                 // mark-all-read replaces the single-convo action
                 val markAll = Intent(context, MarkReadReceiver::class.java).putExtra("convo_id", -2L)
                 builder.clearActions()
                 builder.addAction(0, context.getString(R.string.action_mark_all_read),
-                    PendingIntent.getBroadcast(context, 998, markAll, flags))
+                    PendingIntent.getBroadcast(context, 998, markAll, pendingIntentFlags))
             }
         }
+        val publicNotification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.new_message))
+            .setContentText(context.getString(R.string.app_name))
+            .setContentIntent(publicContentIntent)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        builder.setPublicVersion(publicNotification)
         val notifId = if (single) 1000 else convo.id.toInt()
-        try {
-            NotificationManagerCompat.from(context).notify(notifId, builder.build())
+        val notificationManager = NotificationManagerCompat.from(context)
+        val notificationsEnabled = notificationManager.areNotificationsEnabled()
+        val posted = try {
+            notificationManager.notify(notifId, builder.build())
+            true
         } catch (_: SecurityException) {
             // POST_NOTIFICATIONS not granted yet
+            false
+        }
+        if (posted && notificationsEnabled && channelAllowsNotifications(context, channelId)) {
+            KyoceraSubDisplay.showNewMessage(context)
         }
     }
 
     fun cancel(context: Context, convoId: Long) {
-        NotificationManagerCompat.from(context).cancel(convoId.toInt())
+        if (convoId == -2L) {
+            cancelAll(context)
+            return
+        }
+        val notificationManager = NotificationManagerCompat.from(context)
+        notificationManager.cancel(1000)
+        notificationManager.cancel(convoId.toInt())
+        KyoceraSubDisplay.cancel(context)
+    }
+
+    fun cancelAll(context: Context) {
+        NotificationManagerCompat.from(context).cancelAll()
+        KyoceraSubDisplay.cancel(context)
+    }
+
+    private fun channelAllowsNotifications(context: Context, channelId: String): Boolean {
+        if (Build.VERSION.SDK_INT < 26) return true
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return manager.getNotificationChannel(channelId)?.importance != NotificationManager.IMPORTANCE_NONE
     }
 }
 
