@@ -402,6 +402,7 @@
     <string name="pref_resize_summary">Make everything in the app bigger or smaller</string>
     <string name="pref_auto_mms">Auto-download multimedia messages</string>
     <string name="pref_auto_mms_summary">Download picture/video messages as they arrive. Turn off to save data.</string>
+    <string name="pref_media_viewer">Open images and videos with</string>
     <string name="pref_reimport">Re-import all messages</string>
     <string name="pref_reimport_summary">Rebuild conversations from the phone\'s message store (fixes mixed-up group messages)</string>
     <string name="reimport_warning">This clears the app\'s copy of your messages and re-imports everything from the phone\'s message store. Message locks and scheduled sends are lost; keywords and settings are kept. Continue?</string>
