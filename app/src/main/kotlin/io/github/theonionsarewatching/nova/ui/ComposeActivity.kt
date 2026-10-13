@@ -553,6 +553,7 @@ class ComposeActivity : BaseActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!::binding.isInitialized) return super.dispatchKeyEvent(event)
         if (binding.bodyInput.hasFocus() && handleBodyKey(event)) return true
 
         // BACK while suggestions are up: minimize the list, stay on the screen
@@ -728,17 +729,21 @@ class ComposeActivity : BaseActivity() {
             true
         }
         KeyEvent.KEYCODE_DPAD_CENTER -> {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                start()
+            if (binding.bodyInput.hasImeComposingText()) {
+                false
+            } else {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    start()
+                }
+                true
             }
-            true
         }
         else -> false
     }
 
     override fun onResume() {
         super.onResume()
-        configureComposeActionFocus()
+        if (::binding.isInitialized) configureComposeActionFocus()
     }
 
     private fun configureComposeActionFocus() {

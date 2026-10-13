@@ -953,13 +953,15 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         // newlines in the multi-line input.
         if (event.action == KeyEvent.ACTION_DOWN &&
             event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER &&
-            event.repeatCount == 0 && sendHintActive()
+            event.repeatCount == 0 && sendHintActive() &&
+            !binding.composeInput.hasImeComposingText()
         ) {
             send()
             return true
         }
         if (event.action == KeyEvent.ACTION_UP &&
-            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && sendHintActive()
+            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && sendHintActive() &&
+            !binding.composeInput.hasImeComposingText()
         ) {
             return true
         }
