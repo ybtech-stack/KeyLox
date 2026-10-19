@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import coil.dispose
 import coil.load
 import coil.request.videoFrameMillis
 import io.github.theonionsarewatching.nova.R
@@ -36,7 +37,8 @@ class MediaViewerActivity : BaseActivity() {
         repo = Repo.get(this)
 
         val convoId = intent.getLongExtra(EXTRA_CONVO_ID, -1L)
-        val partId = intent.getLongExtra(EXTRA_PART_ID, -1L)
+        val partId = savedInstanceState?.getLong(EXTRA_PART_ID)
+            ?: intent.getLongExtra(EXTRA_PART_ID, -1L)
 
         binding.pager.orientation = ViewPager2.ORIENTATION_HORIZONTAL
 
@@ -49,12 +51,14 @@ class MediaViewerActivity : BaseActivity() {
                 getString(R.string.back), getString(R.string.play), getString(R.string.save),
                 onLeft = { finish() },
                 onCenter = { playCurrent() },
-                onRight = { saveCurrent() }
+                onRight = { saveCurrent() },
+                onMenu = { viewerOptions() }
             )
         }
 
         binding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
+                if (zoomMode) exitZoom()
                 stopPlayback()
                 updateCounter(position)
                 updateMediaSoftkeys()
@@ -64,12 +68,27 @@ class MediaViewerActivity : BaseActivity() {
         lifecycleScope.launch {
             parts = repo.db.parts().mediaForConvo(convoId)
             if (parts.isEmpty()) { finish(); return@launch }
-            binding.pager.adapter = PageAdapter(parts) { playCurrent() }
+            binding.pager.adapter = PageAdapter(parts,
+                onTap = { activateCurrent() },
+                onGestureZoom = { photo, amount ->
+                    if (photo === currentImageView()) {
+                        zoomMode = amount > 1.02f
+                        zoomedPhoto = if (zoomMode) photo else null
+                        zoomScale = amount
+                        binding.pager.isUserInputEnabled = !zoomMode
+                        if (zoomMode) updateZoomSoftkeys() else updateMediaSoftkeys()
+                    }
+                })
             val start = parts.indexOfFirst { it.id == partId }.coerceAtLeast(0)
             binding.pager.setCurrentItem(start, false)
             updateCounter(start)
             updateMediaSoftkeys()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        currentPart()?.let { outState.putLong(EXTRA_PART_ID, it.id) }
+        super.onSaveInstanceState(outState)
     }
 
     private fun updateCounter(position: Int) {
@@ -146,8 +165,9 @@ class MediaViewerActivity : BaseActivity() {
         softkeys?.set(
             getString(R.string.back), center, getString(R.string.save),
             onLeft = { finish() },
-            onCenter = { if (currentPart()?.isImage() == true) enterZoom() else playCurrent() },
-            onRight = { saveCurrent() }
+            onCenter = { activateCurrent() },
+            onRight = { saveCurrent() },
+            onMenu = { viewerOptions() }
         )
         // "Zoom" renders exactly like Back and Save — same size, same face
         binding.softkeyBar.softCenter.setTextSize(
@@ -168,115 +188,50 @@ class MediaViewerActivity : BaseActivity() {
 
     private var zoomMode = false
     private var zoomScale = 1f
-    // pinch zoom lives at the ACTIVITY dispatch level: it survives page
-    // swipes, needs no laid-out view to attach to (the old per-view attach
-    // ran before the pager laid out its first page, burned its one-shot
-    // flag, and died), and only intercepts while a pinch is in progress or
-    // zoom mode is panning — pager swipes and video controls are untouched
-    private var panLastX = 0f
-    private var panLastY = 0f
-    private val tapDetector by lazy {
-        android.view.GestureDetector(this,
-            object : android.view.GestureDetector.SimpleOnGestureListener() {
-                override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
-                    // double tap toggles zoom: in at 2x, back out to fit
-                    if (zoomMode) exitZoom()
-                    else { enterZoom(); setZoomScale(2f) }
-                    return true
-                }
-            })
+    private var zoomedPhoto: DetailImageView? = null
+
+    private fun activateCurrent() {
+        if (currentPart()?.isImage() == true) enterZoom() else playCurrent()
     }
 
-    private val pinchDetector by lazy {
-        android.view.ScaleGestureDetector(this,
-            object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
-                    if (!zoomMode) enterZoom()
-                    val next = (zoomScale * d.scaleFactor).coerceIn(1f, 6f)
-                    setZoomScale(next)
-                    if (next <= 1.02f) exitZoom()   // pinching fully in leaves zoom
-                    return true
-                }
-            })
-    }
-
-    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        if (io.github.theonionsarewatching.nova.util.Prefs.get(this).touchMode) {
-            tapDetector.onTouchEvent(ev)
-            pinchDetector.onTouchEvent(ev)
-            if (pinchDetector.isInProgress) return true
-            if (zoomMode) {
-                when (ev.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> { panLastX = ev.x; panLastY = ev.y }
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        panBy(ev.x - panLastX, ev.y - panLastY)
-                        panLastX = ev.x; panLastY = ev.y
-                    }
-                }
-                return true
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
-    private fun currentImageView(): android.widget.ImageView? {
-        val rv = binding.pager.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView
-            ?: return null
+    private fun currentImageView(): DetailImageView? {
+        if (currentPart()?.isImage() != true) return null
+        val rv = binding.pager.getChildAt(0) as? RecyclerView ?: return null
         val page = rv.layoutManager?.findViewByPosition(binding.pager.currentItem) ?: return null
-        return page.findViewById(R.id.pageImage)
+        return page.findViewById(R.id.pagePhoto)
     }
 
     private fun enterZoom() {
-        val iv = currentImageView() ?: return
+        val photo = currentImageView()?.takeIf { it.ready } ?: return
         zoomMode = true
-        zoomScale = 1f
+        zoomedPhoto = photo
+        zoomScale = photo.zoom
         binding.pager.isUserInputEnabled = false
-        iv.scaleX = 1f; iv.scaleY = 1f; iv.translationX = 0f; iv.translationY = 0f
         updateZoomSoftkeys()
     }
 
     private fun exitZoom() {
+        zoomedPhoto?.resetZoom()
+        zoomedPhoto = null
         zoomMode = false
-        currentImageView()?.apply {
-            scaleX = 1f; scaleY = 1f; translationX = 0f; translationY = 0f
-        }
+        zoomScale = 1f
         binding.pager.isUserInputEnabled = true
         updateMediaSoftkeys()
     }
 
     private fun zoomStep(zoomIn: Boolean) {
-        setZoomScale(
-            if (zoomIn) (zoomScale * 1.5f).coerceAtMost(4f)
+        val photo = zoomedPhoto ?: return
+        zoomScale = if (zoomIn) (zoomScale * 1.5f).coerceAtMost(photo.maxZoom)
             else (zoomScale / 1.5f).let { if (it < 1.15f) 1f else it }
-        )
-    }
-
-    private fun setZoomScale(v: Float) {
-        val iv = currentImageView() ?: return
-        zoomScale = v
-        iv.scaleX = zoomScale
-        iv.scaleY = zoomScale
-        clampPan(iv)
+        photo.zoomTo(zoomScale)
         updateZoomSoftkeys()
     }
 
-    private fun panBy(dx: Float, dy: Float) {
-        val iv = currentImageView() ?: return
-        iv.translationX += dx
-        iv.translationY += dy
-        clampPan(iv)
-    }
-
-    private fun clampPan(iv: android.widget.ImageView) {
-        val maxX = (zoomScale - 1f) * iv.width / 2f
-        val maxY = (zoomScale - 1f) * iv.height / 2f
-        iv.translationX = iv.translationX.coerceIn(-maxX, maxX)
-        iv.translationY = iv.translationY.coerceIn(-maxY, maxY)
-    }
+    private fun panBy(dx: Float, dy: Float) { zoomedPhoto?.panBy(dx, dy) }
 
     private fun updateZoomSoftkeys() {
         val canOut = zoomScale > 1f
-        val canIn = zoomScale < 4f
+        val canIn = zoomScale < (zoomedPhoto?.maxZoom ?: 1f) - 0.01f
         val barOn = softkeys?.shouldShow() == true
         softkeys?.set(
             if (canOut) getString(R.string.zoom_out_label) else null,
@@ -366,7 +321,7 @@ class MediaViewerActivity : BaseActivity() {
                 activeVideoPartId = -1L
                 activeMediaPlayer = null
                 updateMediaSoftkeys()
-                openWithSystemPlayer(p)
+                videoPlaybackFailed()
                 true
             }
             activeVideoPartId = p.id
@@ -374,7 +329,7 @@ class MediaViewerActivity : BaseActivity() {
             updateMediaSoftkeys(forcePlaying = true)
             startProgressTicker()
         } catch (_: Exception) {
-            openWithSystemPlayer(p)
+            videoPlaybackFailed()
         }
     }
 
@@ -404,16 +359,26 @@ class MediaViewerActivity : BaseActivity() {
         } catch (_: Exception) {}
     }
 
-    private fun openWithSystemPlayer(p: io.github.theonionsarewatching.nova.data.PartEntity) {
+    private fun videoPlaybackFailed() {
+        stopPlayback()
+        android.widget.Toast.makeText(this, R.string.video_playback_failed,
+            android.widget.Toast.LENGTH_LONG).show()
+    }
+
+    private fun openWith(p: PartEntity) {
         try {
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 this, "$packageName.fileprovider", File(p.filePath)
             )
-            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, p.mimeType)
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            })
-        } catch (_: Exception) {}
+            }
+            startActivity(android.content.Intent.createChooser(viewIntent, getString(R.string.player_open_with)))
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(this, R.string.no_app_for_file,
+                android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** MENU: fallback actions for files this phone's codecs struggle with. */
@@ -421,10 +386,10 @@ class MediaViewerActivity : BaseActivity() {
         val p = currentPart() ?: return
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setItems(arrayOf(
-                getString(R.string.open_with_system), getString(R.string.save)
+                getString(R.string.player_open_with), getString(R.string.save)
             )) { _, which ->
                 when (which) {
-                    0 -> openWithSystemPlayer(p)
+                    0 -> openWith(p)
                     1 -> saveCurrent()
                 }
             }
@@ -461,6 +426,7 @@ class MediaViewerActivity : BaseActivity() {
     override fun onPause() {
         super.onPause()
         stopPlayback()
+        if (zoomMode) updateZoomSoftkeys()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -527,7 +493,7 @@ class MediaViewerActivity : BaseActivity() {
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                    if (currentPart()?.isImage() == true) enterZoom() else playCurrent()
+                    activateCurrent()
                     return true
                 }
             }
@@ -537,7 +503,8 @@ class MediaViewerActivity : BaseActivity() {
 
     class PageAdapter(
         private val parts: List<PartEntity>,
-        private val onTap: () -> Unit
+        private val onTap: () -> Unit,
+        private val onGestureZoom: (DetailImageView, Float) -> Unit
     ) : RecyclerView.Adapter<PageAdapter.VH>() {
 
         class VH(val b: ItemMediaPageBinding) : RecyclerView.ViewHolder(b.root)
@@ -549,14 +516,21 @@ class MediaViewerActivity : BaseActivity() {
 
         override fun onBindViewHolder(holder: VH, position: Int) {
             val p = parts[position]
+            holder.b.pagePhoto.clear()
+            holder.b.pagePhoto.visibility = View.GONE
+            holder.b.pageImage.setImageDrawable(null)
+            holder.b.pageImage.tag = null
+            holder.b.pageVideo.tag = null
+            holder.b.pagePlayBadge.tag = null
             holder.b.pageImage.visibility = View.GONE
             holder.b.pageVideo.visibility = View.GONE
             holder.b.pageLabel.visibility = View.GONE
+            holder.b.pagePlayBadge.visibility = View.GONE
             when {
                 p.isImage() -> {
-                    holder.b.pagePlayBadge.visibility = View.GONE
-                    holder.b.pageImage.visibility = View.VISIBLE
-                    holder.b.pageImage.load(File(p.filePath))
+                    holder.b.pagePhoto.visibility = View.VISIBLE
+                    holder.b.pagePhoto.bind(File(p.filePath), p.mimeType.equals("image/gif", true))
+                    holder.b.pagePhoto.onGestureZoom = { amount -> onGestureZoom(holder.b.pagePhoto, amount) }
                 }
                 p.isVideo() -> {
                     holder.b.pageVideo.visibility = View.VISIBLE
@@ -578,6 +552,13 @@ class MediaViewerActivity : BaseActivity() {
                 }
             }
             holder.itemView.setOnClickListener { onTap() }
+        }
+
+        override fun onViewRecycled(holder: VH) {
+            holder.b.pagePhoto.clear()
+            holder.b.pageImage.dispose()
+            try { holder.b.pageVideo.stopPlayback() } catch (_: Exception) { }
+            super.onViewRecycled(holder)
         }
     }
 }

@@ -1546,8 +1546,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     }
 
     private fun openPartExternally(
-        part: io.github.theonionsarewatching.nova.data.PartEntity,
-        showError: Boolean = true
+        part: io.github.theonionsarewatching.nova.data.PartEntity
     ): Boolean {
         return try {
             val uri = androidx.core.content.FileProvider.getUriForFile(
@@ -1559,10 +1558,8 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
             })
             true
         } catch (_: Exception) {
-            if (showError) {
-                android.widget.Toast.makeText(this, R.string.no_app_for_file,
-                    android.widget.Toast.LENGTH_SHORT).show()
-            }
+            android.widget.Toast.makeText(this, R.string.no_app_for_file,
+                android.widget.Toast.LENGTH_SHORT).show()
             false
         }
     }
@@ -1598,9 +1595,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     private fun openAttachment(row: MessageRow, index: Int) {
         val part = row.parts.getOrNull(index) ?: return
         if (part.isImage() || part.isVideo()) {
-            if (prefs.mediaViewer == "system" && openPartExternally(part, showError = false)) {
-                return
-            }
             startActivity(Intent(this, MediaViewerActivity::class.java).apply {
                 putExtra(MediaViewerActivity.EXTRA_CONVO_ID, convoId)
                 putExtra(MediaViewerActivity.EXTRA_PART_ID, part.id)

@@ -3,6 +3,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <io.github.theonionsarewatching.nova.ui.DetailImageView
+        android:id="@+id/pagePhoto"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:contentDescription="@string/snippet_attachment" />
+
     <ImageView
         android:id="@+id/pageImage"
         android:layout_width="match_parent"

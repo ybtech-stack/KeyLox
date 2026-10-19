@@ -20,15 +20,6 @@
         <item>conversation</item>
     </string-array>
 
-    <string-array name="media_viewer_entries">
-        <item>System viewer (recommended)</item>
-        <item>KeyMSG built-in viewer</item>
-    </string-array>
-    <string-array name="media_viewer_values">
-        <item>system</item>
-        <item>built_in</item>
-    </string-array>
-
     <string-array name="mms_profile_entries">
         <item>Off</item>
         <item>Carrier app (Verizon SIMs)</item>

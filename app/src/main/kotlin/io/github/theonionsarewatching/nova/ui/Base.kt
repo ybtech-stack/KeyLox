@@ -305,6 +305,16 @@ abstract class BaseActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) softkeys?.resetKeyState()
+    }
+
+    override fun onPause() {
+        softkeys?.resetKeyState()
+        super.onPause()
+    }
+
     fun clipboardText(): String? = try {
         val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.primaryClip?.takeIf { it.itemCount > 0 }
@@ -460,9 +470,17 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
     // action is the same press's echo and gets swallowed.
     private var lastNonMenuActionAt = 0L
     private var pendingMenu: Runnable? = null
+    private val keyDowns = mutableMapOf<Int, Pair<Long, Int>>()
 
     private fun cancelPendingMenu() {
         pendingMenu?.let { binding.root.removeCallbacks(it); pendingMenu = null }
+    }
+
+    /** A launcher or dialog can deliver only the tail of its keypress to the
+     *  next window. Never treat that release as a fresh softkey press. */
+    fun resetKeyState() {
+        keyDowns.clear()
+        cancelPendingMenu()
     }
 
     fun handleKey(event: KeyEvent): Boolean {
@@ -470,22 +488,33 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
         // physical keys used to keep firing their invisible actions (right
         // softkey silently sent) — user-reported as wrong. The capture screen
         // is unaffected: it reads raw key events in its own dispatch.
-        if (!shouldShow()) return false
+        if (!shouldShow()) { resetKeyState(); return false }
         if (event.keyCode == KeyEvent.KEYCODE_MENU &&
             event.keyCode != prefs.softkeyLeftCode &&
             event.keyCode != prefs.softkeyRightCode &&
-            System.currentTimeMillis() - lastNonMenuActionAt < 400
+            android.os.SystemClock.uptimeMillis() - lastNonMenuActionAt < 400
         ) return true  // consume the echo, fire nothing
         if (!codeMatches(event.keyCode)) return false
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            if (event.repeatCount == 0) keyDowns[event.keyCode] = event.downTime to event.deviceId
+            return true
+        }
         if (event.action != KeyEvent.ACTION_UP) return true
+        val down = keyDowns.remove(event.keyCode)
+        if (event.isCanceled || down != (event.downTime to event.deviceId)) {
+            io.github.theonionsarewatching.nova.util.DiagLog.log(
+                activity, "softkeys", "ignored unmatched/canceled release code=${event.keyCode}"
+            )
+            return true
+        }
         when (event.keyCode) {
             prefs.softkeyLeftCode -> {
-                lastNonMenuActionAt = System.currentTimeMillis()
+                lastNonMenuActionAt = android.os.SystemClock.uptimeMillis()
                 cancelPendingMenu()   // Sonim MENU-first order: swallow its pair
                 leftAction?.invoke()
             }
             prefs.softkeyRightCode -> {
-                lastNonMenuActionAt = System.currentTimeMillis()
+                lastNonMenuActionAt = android.os.SystemClock.uptimeMillis()
                 cancelPendingMenu()
                 rightAction?.invoke()
             }
@@ -499,6 +528,7 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
                     // in either order. MENU waits a beat; the softkey action
                     // landing inside the window cancels it. Real MENU presses
                     // just feel imperceptibly delayed.
+                    cancelPendingMenu()
                     val r = Runnable { pendingMenu = null; menuAction?.invoke() }
                     pendingMenu = r
                     binding.root.postDelayed(r, 280)
