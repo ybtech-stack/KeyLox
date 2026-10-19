@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.ybeck.keymsg"
         minSdk = 23
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.1.7"
+        versionCode = 9
+        versionName = "0.1.8"
         vectorDrawables.useSupportLibrary = true
     }
 

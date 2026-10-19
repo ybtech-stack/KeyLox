@@ -42,16 +42,15 @@ class MediaViewerActivity : BaseActivity() {
 
         binding.pager.orientation = ViewPager2.ORIENTATION_HORIZONTAL
 
-        // this screen's labels sit centered in their cells so neither hugs an
-        // edge — "Save" was clipping its last glyph at the right boundary
+        // Keep the softkey labels centered within their cells.
         binding.softkeyBar.softLeft.gravity = android.view.Gravity.CENTER
         binding.softkeyBar.softRight.gravity = android.view.Gravity.CENTER
         softkeys = Softkeys(this, binding.softkeyBar).also {
             it.set(
-                getString(R.string.back), getString(R.string.play), getString(R.string.save),
+                getString(R.string.back), getString(R.string.play), getString(R.string.softkey_options),
                 onLeft = { finish() },
                 onCenter = { playCurrent() },
-                onRight = { saveCurrent() },
+                onRight = { viewerOptions() },
                 onMenu = { viewerOptions() }
             )
         }
@@ -151,8 +150,7 @@ class MediaViewerActivity : BaseActivity() {
     private fun isVideoPlaying(): Boolean =
         try { currentVideoView()?.isPlaying == true } catch (_: Exception) { false }
 
-    /** Center softkey reads Play for a stopped/paused video, Pause while playing,
-     *  and nothing at all on images. */
+    /** Center softkey reads Play/Pause for videos and Zoom for images. */
     private fun updateMediaSoftkeys(forcePlaying: Boolean? = null) {
         val p = currentPart()
         val playing = forcePlaying ?: isVideoPlaying()
@@ -163,13 +161,13 @@ class MediaViewerActivity : BaseActivity() {
             else -> ""
         }
         softkeys?.set(
-            getString(R.string.back), center, getString(R.string.save),
+            getString(R.string.back), center, getString(R.string.softkey_options),
             onLeft = { finish() },
             onCenter = { activateCurrent() },
-            onRight = { saveCurrent() },
+            onRight = { viewerOptions() },
             onMenu = { viewerOptions() }
         )
-        // "Zoom" renders exactly like Back and Save — same size, same face
+        // "Zoom" renders exactly like Back and Options — same size, same face
         binding.softkeyBar.softCenter.setTextSize(
             android.util.TypedValue.COMPLEX_UNIT_PX, binding.softkeyBar.softLeft.textSize
         )

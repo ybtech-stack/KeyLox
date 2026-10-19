@@ -26,7 +26,7 @@ No app store needed. No Google account. Nothing leaves your phone.
   into the app from the gallery
 - Images and videos open in KeyMSG's viewer; photos use original image tiles
   for detailed zoom, with left/right browsing and no automatic Gallery copies
-- Choose **Open with…** from the viewer menu to use another installed app
+- Choose **Options → Open with…** in the viewer to use another installed app
 - Whole-app resize from 70% to 150%, plus separate text size settings
 - Built-in weekly update checks and installer through signed GitHub releases
 - Backup and restore to a single file, including attachments; restore writes
