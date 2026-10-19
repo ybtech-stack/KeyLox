@@ -138,8 +138,6 @@ class Prefs(context: Context) {
     // center D-pad key = Send while the cursor is in the message box
     val sendOnLeft: Boolean get() = sp.getBoolean("send_on_left", false)
     val saveToSd: Boolean get() = sp.getBoolean("save_to_sd", false)
-    // system / built_in: viewer used when an image or video attachment is opened
-    val mediaViewer: String get() = sp.getString("media_viewer", "system") ?: "system"
     var autoRetryIds: Set<String>
         get() = sp.getStringSet("auto_retry_ids", emptySet()) ?: emptySet()
         set(v) = sp.edit().putStringSet("auto_retry_ids", v).apply()

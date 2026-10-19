@@ -18,7 +18,7 @@
 | Per-recipient delivered/read | `recipientStatuses` (see MESSAGING-PIPELINE) |
 | Attachments (photo/video/contact/audio/file/gallery/emoji) | `AttachOrPaste`, `ThreadActivity.pickAttachment`, `ui/EmojiPicker`, `util/MimeExt` |
 | Video compression (auto, fits carrier MMS cap) | `util/VideoCompressor` (surface-to-surface MediaCodec; AAC passthrough; failure = original path) |
-| Picture viewer + zoom | `ui/MediaViewerActivity.kt` |
+| Picture viewer + original-resolution tiled zoom (private files, no Gallery copies) | `ui/MediaViewerActivity.kt`, `ui/DetailImageView.kt` |
 | Save to gallery/Downloads/SD | `ui/Saver.kt` (+ MMS settings switch) |
 | Scheduled send, locked messages, recycle bin | `Repo` (alarms), entity flags |
 | Blocked keywords (modes, numbers, case) | `KeywordEntity`, Advanced settings |

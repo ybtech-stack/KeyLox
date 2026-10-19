@@ -38,6 +38,7 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        logLaunch()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         repo = Repo.get(this)
@@ -81,7 +82,7 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
             }
         )
 
-        binding.btnSettings.setOnClickListener { optionsMenu() }
+        binding.btnSettings.setOnClickListener { optionsMenu("header") }
         binding.btnCompose.setOnClickListener { startActivity(Intent(this, ComposeActivity::class.java)) }
         binding.gateButton.setOnClickListener { requestDefaultSmsRole() }
 
@@ -103,6 +104,19 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
         ThemeUtils.applyFocusHighlightRound(binding.btnSettings, binding.btnCompose)
         ThemeUtils.applyButtonFocus(binding.gateButton)
         ThemeUtils.applyFocusHighlight(binding.searchInput)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        logLaunch(intent)
+    }
+
+    private fun logLaunch(launch: Intent = intent) {
+        io.github.theonionsarewatching.nova.util.DiagLog.log(
+            this, "launch",
+            "model=${Build.MODEL} sdk=${Build.VERSION.SDK_INT} action=${launch.action} " +
+                "categories=${launch.categories} left=${prefs.softkeyLeftCode} right=${prefs.softkeyRightCode}"
+        )
     }
 
     override fun onStart() {
@@ -402,7 +416,8 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
         }
     }
 
-    private fun optionsMenu() {
+    private fun optionsMenu(source: String) {
+        io.github.theonionsarewatching.nova.util.DiagLog.log(this, "options", "opened by $source")
         val items = arrayOf(
             getString(R.string.menu_search),
             getString(R.string.menu_archived),
@@ -768,8 +783,8 @@ class MainActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Chat
             getString(R.string.softkey_options),
             onLeft = { startActivity(Intent(this, ComposeActivity::class.java)) },
             onCenter = { (binding.convoList.focusedChild)?.performClick() },
-            onRight = { optionsMenu() },
-            onMenu = { optionsMenu() }
+            onRight = { optionsMenu("right softkey") },
+            onMenu = { optionsMenu("menu key") }
         )
     }
 

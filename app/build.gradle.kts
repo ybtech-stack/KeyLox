@@ -14,8 +14,8 @@ android {
         applicationId = "io.github.ybeck.keymsg"
         minSdk = 23
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.1.6"
+        versionCode = 8
+        versionName = "0.1.7"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -84,6 +84,8 @@ dependencies {
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
     implementation("io.coil-kt:coil-gif:2.6.0")
+    implementation("com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // SMS/MMS engine: maintained fork of klinker41/android-smsmms (Apache-2.0),
     // the same engine + version used by Simple SMS Messenger (minSdk 23 compatible).
