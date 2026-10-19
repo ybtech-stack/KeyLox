@@ -142,6 +142,10 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         ThemeUtils.applyRowFocus(binding.attachmentRow)
 
         binding.composeInput.maxLines = prefs.composeMaxLines
+        // Kyocera Mediumkey turns physical Down into a newline before normal
+        // Activity dispatch. Replies need the same pre-IME path as new messages.
+        binding.composeInput.preImeKeyHandler = ::handleComposeInputKey
+        binding.composeInput.setOnKeyListener { _, _, event -> handleComposeInputKey(event) }
         binding.composeInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -871,7 +875,20 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         }
     }
 
+    private fun handleComposeInputKey(event: KeyEvent): Boolean {
+        if (!composeMode || prefs.touchMode) return false
+        return KeypadNavigation.handleMove(event, KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (softkeys?.shouldShow() == true) {
+                if (prefs.sendOnLeft) binding.softkeyBar.softLeft else binding.softkeyBar.softRight
+            } else {
+                binding.btnSend
+            }
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!::binding.isInitialized) return super.dispatchKeyEvent(event)
+        if (binding.composeInput.hasFocus() && handleComposeInputKey(event)) return true
         if (selecting && event.action == KeyEvent.ACTION_DOWN &&
             event.keyCode == KeyEvent.KEYCODE_BACK
         ) {
@@ -893,16 +910,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
             softkeys?.shouldShow() == true
         ) {
             when {
-                event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN &&
-                    binding.composeInput.hasFocus() -> {
-                    val sendAction = if (prefs.sendOnLeft) {
-                        binding.softkeyBar.softLeft
-                    } else {
-                        binding.softkeyBar.softRight
-                    }
-                    KeypadNavigation.focus(sendAction)
-                    return true
-                }
                 event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
                     (binding.softkeyBar.softLeft.hasFocus() ||
                         binding.softkeyBar.softRight.hasFocus()) -> {

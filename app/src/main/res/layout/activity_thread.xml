@@ -251,7 +251,7 @@
             android:layout_weight="1"
             android:background="@drawable/bg_compose_pill">
 
-        <EditText
+        <io.github.theonionsarewatching.nova.ui.KeypadEditText
             android:id="@+id/composeInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
