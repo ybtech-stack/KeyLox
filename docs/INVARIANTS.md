@@ -33,3 +33,8 @@
 11. **Every non-ingested inbox MMS row logs a drop reason.** No silent exits.
 12. **Sync passes skip outgoing provider rows younger than 15 s** (both SMS
     and MMS) — the fan-out registration race.
+13. **Both message editors intercept Down before the IME.** Kyocera Mediumkey
+    converts physical Down into a newline before Activity key dispatch. New
+    messages and replies must use `KeypadEditText` and a pre-IME handler to move
+    focus to their actions. Verify with the physical keypad path after typing;
+    ADB's ordinary `input keyevent` does not reproduce the keyboard conversion.
