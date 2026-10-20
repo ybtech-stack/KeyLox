@@ -669,10 +669,6 @@ class ComposeActivity : BaseActivity() {
                     if (binding.attachChip.hasFocus() &&
                         KeypadNavigation.focus(binding.bodyInput)
                     ) return true
-                    if (binding.bodyInput.hasFocus()) {
-                        KeypadNavigation.focus(binding.btnSchedule)
-                        return true
-                    }
                     if (binding.btnSchedule.hasFocus() && focusBottomComposeAction()) return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
@@ -723,10 +719,15 @@ class ComposeActivity : BaseActivity() {
 
     private fun handleBodyKey(event: KeyEvent): Boolean = when (event.keyCode) {
         KeyEvent.KEYCODE_DPAD_DOWN -> {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                KeypadNavigation.focus(binding.btnSchedule)
+            if (binding.bodyInput.deferDownToIme(event)) false
+            else KeypadNavigation.handleMove(event, KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (softkeys?.shouldShow() == true) {
+                    if (Prefs.get(this).sendOnLeft) binding.softkeyBar.softLeft
+                    else binding.softkeyBar.softRight
+                } else {
+                    binding.btnStart
+                }
             }
-            true
         }
         KeyEvent.KEYCODE_DPAD_CENTER -> {
             if (binding.bodyInput.hasImeComposingText()) {

@@ -38,3 +38,9 @@
     messages and replies must use `KeypadEditText` and a pre-IME handler to move
     focus to their actions. Verify with the physical keypad path after typing;
     ADB's ordinary `input keyevent` does not reproduce the keyboard conversion.
+    **Exception: visible T9 word choices own Down.** Defer the whole press to
+    the IME while both composing text and a visible IME panel are present.
+    Composing spans alone are insufficient: inline T9 without an open panel
+    must still move Down directly to Send, without inserting a newline. Test
+    candidate-row navigation with the panel open, then Down after it closes,
+    in both new messages and replies.
