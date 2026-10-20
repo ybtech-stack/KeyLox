@@ -877,6 +877,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
 
     private fun handleComposeInputKey(event: KeyEvent): Boolean {
         if (!composeMode || prefs.touchMode) return false
+        if (binding.composeInput.deferDownToIme(event)) return false
         return KeypadNavigation.handleMove(event, KeyEvent.KEYCODE_DPAD_DOWN) {
             if (softkeys?.shouldShow() == true) {
                 if (prefs.sendOnLeft) binding.softkeyBar.softLeft else binding.softkeyBar.softRight
