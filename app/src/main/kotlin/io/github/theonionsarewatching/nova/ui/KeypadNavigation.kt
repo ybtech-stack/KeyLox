@@ -1,6 +1,5 @@
 package io.github.theonionsarewatching.nova.ui
 
-import android.view.KeyEvent
 import android.view.View
 
 object KeypadNavigation {
@@ -11,12 +10,6 @@ object KeypadNavigation {
         if (!target.requestFocus()) {
             target.post { target.requestFocusFromTouch() }
         }
-        return true
-    }
-
-    fun handleMove(event: KeyEvent, keyCode: Int, target: () -> View?): Boolean {
-        if (event.keyCode != keyCode) return false
-        if (event.action == KeyEvent.ACTION_DOWN) focus(target())
         return true
     }
 }

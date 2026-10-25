@@ -33,14 +33,24 @@
 11. **Every non-ingested inbox MMS row logs a drop reason.** No silent exits.
 12. **Sync passes skip outgoing provider rows younger than 15 s** (both SMS
     and MMS) — the fan-out registration race.
-13. **Both message editors intercept Down before the IME.** Kyocera Mediumkey
-    converts physical Down into a newline before Activity key dispatch. New
-    messages and replies must use `KeypadEditText` and a pre-IME handler to move
-    focus to their actions. Verify with the physical keypad path after typing;
-    ADB's ordinary `input keyevent` does not reproduce the keyboard conversion.
-    **Exception: visible T9 word choices own Down.** Defer the whole press to
-    the IME while both composing text and a visible IME panel are present.
-    Composing spans alone are insufficient: inline T9 without an open panel
-    must still move Down directly to Send, without inserting a newline. Test
-    candidate-row navigation with the panel open, then Down after it closes,
-    in both new messages and replies.
+13. **The message editor is the last compose focus stop.** New messages and
+    replies share `KeypadEditText.handleComposeKey`: Down moves the caret within
+    the text, stays at the last line, and never inserts a newline or focuses an
+    action. Keep the pre-IME path: Kyocera Mediumkey otherwise converts physical
+    Down into a newline. An open T9 word panel owns the entire Down press.
+    Composing spans alone do not mean that panel is open.
+14. **OK accepts T9 before it sends.** A composing word owns the entire OK press,
+    including repeats and release after its composing spans disappear. Only a
+    subsequent fresh OK sends. Enter remains available for explicit line breaks.
+    Both editors use right softkey / MENU for the same compose Options actions;
+    labels do not become extra editor focus stops, even with selectable softkeys
+    enabled. Route the configured Options key before the IME in both the body
+    and recipient fields: Mediumkey can swallow it even with no word panel.
+    Test the real keypad path: ordinary ADB `input keyevent` bypasses
+    Mediumkey's physical-key translation. Preserve softkey release matching and
+    Sonim MENU-echo suppression when changing compose menus.
+15. **An unused native softkey still has a MENU echo.** Observe its physical
+    press before the IME, without consuming it, and suppress/cancel the echo
+    in either event order. Do not turn an unmatched release into a fresh press.
+    A blank softkey label must not be clickable; the new-message center action
+    exists only while the message body has focus.

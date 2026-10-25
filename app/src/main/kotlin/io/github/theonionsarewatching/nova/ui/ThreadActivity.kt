@@ -124,17 +124,11 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
                 if (newState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) markRead()
             }
         })
-        binding.btnOverflow.setOnClickListener { threadOptions() }
-        binding.btnAttach.setOnClickListener {
-            AttachOrPaste.open(this, binding.composeInput,
-                onAttach = { pickAttachment() },
-                onRecord = { recordAudioAttachment() })
-        }
-        binding.btnSend.setOnClickListener { send() }
+        binding.btnOverflow.setOnClickListener { if (composeMode) composeOptions() else threadOptions() }
         binding.attachmentRow.setOnClickListener { manageAttachments() }
         binding.attachClear.setOnClickListener { manageAttachments() }
         ThemeUtils.applyFocusHighlightRound(
-            binding.btnBack, binding.btnOverflow, binding.btnAttach, binding.btnSend
+            binding.btnBack, binding.btnOverflow
         )
         // reply field: no focus ring (it never tracked the growing text
         // reliably) — the shaded pill is the field's own visual, and the
@@ -158,7 +152,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         })
 
         softkeys = Softkeys(this, binding.softkeyBar)
-        applyComposeButtonLayout()
         attachTouchDateBubble()
         if (prefs.touchMode) {
             // touch phones: focus lands in the box on entry, which popped the
@@ -170,10 +163,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
                     .showSoftInput(v, 0)
             }
         }
-        // On phones whose keyboard steals the right D-pad as Space (e.g. Kyocera
-        // E4810) the user can't reach the on-screen Send button, and if the
-        // softkey bar is off there's no softkey Send either. So when softkeys
-        // are off, D-pad center sends while the compose box has focus.
+        // Keep counters in sync without adding focus stops below the editor.
         binding.composeInput.setOnFocusChangeListener { _, _ ->
             updateSendHint(); updateCharCounter()
         }
@@ -268,7 +258,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
                 updateNotifStatusIcon(it)
             }
         }
-        applyComposeButtonLayout()
         updateSoftkeys()
         markRead()
         // color / style / thumbnail settings can change while a settings screen
@@ -382,6 +371,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     }
 
     private fun updateSelectionUi() {
+        softkeys?.setNavigationFocusable(null)
         binding.threadSubtitle.text = getString(R.string.n_selected, selectedIds.size)
         binding.btnSelDeleteThread.text = getString(R.string.delete_n, selectedIds.size)
         softkeys?.set(
@@ -493,7 +483,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     /** Opened straight into this thread (notification, dialer)? Back should
      *  land on the conversation list, not exit the app. */
     override fun onClipboardChanged() {
-        // the compose-mode left label depends on the clipboard state
+        // Rebuild compose actions from the current clipboard when opened.
         if (composeMode) runOnUiThread { updateSoftkeys() }
     }
 
@@ -710,75 +700,26 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         }
     }
 
-    /** Compose-bar buttons for the current mode:
-     *  - bar ON, normal: both on-screen buttons hidden (softkeys carry them)
-     *  - bar ON, send-on-left: the + stays on screen at the left (attach /
-     *    record / paste); Send lives on the LEFT softkey
-     *  - bar OFF, normal: [ + ] [ box ] [ send ]
-     *  - bar OFF, send-on-left: [ + ] [ send ] [ box ] with an explicit
-     *    left-arrow focus chain box -> Send -> +, for keyboards that consume
-     *    the right D-pad as Space (no escape to the right of the box). */
-    private fun applyComposeButtonLayout() {
-        val barShown = softkeys?.shouldShow() == true
-        val sol = prefs.sendOnLeft
-        binding.btnAttach.visibility = if (barShown && !sol) View.GONE else View.VISIBLE
-        binding.btnSend.visibility = if (barShown) View.GONE else View.VISIBLE
-        val bar = binding.composeBar
-        val frame = binding.composeInput.parent as View
-        val wantSendFirst = sol && !barShown
-        val isSendFirst = bar.indexOfChild(binding.btnSend) in 0 until bar.indexOfChild(frame)
-        if (wantSendFirst != isSendFirst) {
-            bar.removeView(binding.btnAttach)
-            bar.removeView(binding.btnSend)
-            if (wantSendFirst) {
-                bar.addView(binding.btnSend, 0)
-                bar.addView(binding.btnAttach, 0)
-            } else {
-                bar.addView(binding.btnAttach, 0)
-                bar.addView(binding.btnSend)
-            }
-        }
-        if (wantSendFirst) {
-            binding.composeInput.nextFocusLeftId = binding.btnSend.id
-            binding.btnSend.nextFocusLeftId = binding.btnAttach.id
-            binding.btnSend.nextFocusRightId = binding.composeInput.id
-            binding.btnAttach.nextFocusRightId = binding.btnSend.id
-        } else {
-            binding.composeInput.nextFocusLeftId = View.NO_ID
-            binding.btnSend.nextFocusLeftId = View.NO_ID
-            binding.btnSend.nextFocusRightId = View.NO_ID
-            binding.btnAttach.nextFocusRightId = View.NO_ID
-        }
+    private fun composeOptions() {
+        ComposeOptions.show(this, binding.composeInput,
+            onSend = { send() },
+            onAttach = { pickAttachment() },
+            onRecord = { recordAudioAttachment() },
+            onSchedule = { scheduleSend() },
+            onConversation = { threadOptions() })
     }
 
-    /** Compose mode: Attach | Send on the softkeys. Scroll mode: Options | Select | Compose. */
+    /** The compose labels are hints, never extra D-pad focus stops. */
     private fun updateSoftkeys() {
+        softkeys?.setNavigationFocusable(if (composeMode && !selecting) false else null)
         if (selecting) { updateSelectionUi(); return }
         if (composeMode) {
-            if (prefs.sendOnLeft) {
-                // send-on-left: Send is the LEFT softkey, the right stays
-                // blank (its action is null so the physical key is inert), and
-                // attach/record/paste live on the on-screen + button
-                softkeys?.set(
-                    getString(R.string.softkey_send), null, null,
-                    onLeft = { send() },
-                    onCenter = null,
-                    onRight = null,
-                    onMenu = { threadOptions() }
-                )
-            } else {
-                val leftLabel = if (clipboardText().isNullOrBlank())
-                    getString(R.string.softkey_attach) else getString(R.string.softkey_options)
-                softkeys?.set(
-                    leftLabel, null, getString(R.string.softkey_send),
-                    onLeft = { AttachOrPaste.open(this, binding.composeInput,
-                        onAttach = { pickAttachment() },
-                        onRecord = { recordAudioAttachment() }) },
-                    onCenter = null,
-                    onRight = { send() },
-                    onMenu = { threadOptions() }
-                )
-            }
+            softkeys?.set(
+                null, getString(R.string.softkey_send), getString(R.string.softkey_options),
+                onCenter = { if (!binding.composeInput.hasImeComposingText()) send() },
+                onRight = { composeOptions() },
+                onMenu = { composeOptions() }
+            )
         } else {
             // scroll mode: the center opens the focused message; it is NOT the
             // selection action (that's entered by long-press / hold), so it must
@@ -792,11 +733,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
             )
         }
     }
-
-    /** The physical OK/center key sends while the reply box is focused. ENTER
-     *  remains available for line breaks in the multi-line input. */
-    private fun sendHintActive(): Boolean =
-        composeMode && binding.composeInput.hasFocus()
 
     /** chars-over-segments counter in the corner of the compose box */
     private fun updateCharCounter() {
@@ -816,17 +752,7 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
     }
 
     private fun updateSendHint() {
-        // When the softkeys are D-pad selectable, keep Android's fallback focus
-        // path aligned with whichever side currently contains Send.
-        if (prefs.softkeysFocusable && composeMode && softkeys?.shouldShow() == true) {
-            binding.composeInput.nextFocusDownId = if (prefs.sendOnLeft) {
-                binding.softkeyBar.softLeft.id
-            } else {
-                binding.softkeyBar.softRight.id
-            }
-        } else {
-            binding.composeInput.nextFocusDownId = View.NO_ID
-        }
+        binding.composeInput.nextFocusDownId = binding.composeInput.id
     }
 
     private fun enterComposeMode() {
@@ -877,14 +803,8 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
 
     private fun handleComposeInputKey(event: KeyEvent): Boolean {
         if (!composeMode || prefs.touchMode) return false
-        if (binding.composeInput.deferDownToIme(event)) return false
-        return KeypadNavigation.handleMove(event, KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (softkeys?.shouldShow() == true) {
-                if (prefs.sendOnLeft) binding.softkeyBar.softLeft else binding.softkeyBar.softRight
-            } else {
-                binding.btnSend
-            }
-        }
+        if (softkeys?.handleComposeOptionsKey(event) == true) return true
+        return binding.composeInput.handleComposeKey(event) { send() }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -907,30 +827,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
         }
         if (softkeys?.handleKey(event) == true) return true
 
-        if (event.action == KeyEvent.ACTION_DOWN && composeMode &&
-            softkeys?.shouldShow() == true
-        ) {
-            when {
-                event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
-                    (binding.softkeyBar.softLeft.hasFocus() ||
-                        binding.softkeyBar.softRight.hasFocus()) -> {
-                    KeypadNavigation.focus(binding.composeInput)
-                    return true
-                }
-                event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
-                    binding.softkeyBar.softRight.hasFocus() -> {
-                    KeypadNavigation.focus(binding.softkeyBar.softLeft)
-                    return true
-                }
-                event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT &&
-                    binding.softkeyBar.softLeft.hasFocus() &&
-                    binding.softkeyBar.softRight.text.isNotBlank() -> {
-                    KeypadNavigation.focus(binding.softkeyBar.softRight)
-                    return true
-                }
-            }
-        }
-
         // a tall first message (a picture): keep scrolling it into view on
         // D-pad-up; only once its top is fully visible may focus leave the
         // list for the top bar
@@ -952,26 +848,6 @@ class ThreadActivity : BaseActivity(), io.github.theonionsarewatching.nova.ui.Ch
                     return true
                 }
             }
-        }
-
-        // D-pad center = Send when the compose box is focused and the softkey
-        // bar is off. This is the escape hatch for keyboards that repurpose the
-        // right D-pad as Space (Kyocera E4810), leaving the on-screen Send
-        // button unreachable by D-pad. ENTER is left alone so it still inserts
-        // newlines in the multi-line input.
-        if (event.action == KeyEvent.ACTION_DOWN &&
-            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER &&
-            event.repeatCount == 0 && sendHintActive() &&
-            !binding.composeInput.hasImeComposingText()
-        ) {
-            send()
-            return true
-        }
-        if (event.action == KeyEvent.ACTION_UP &&
-            event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER && sendHintActive() &&
-            !binding.composeInput.hasImeComposingText()
-        ) {
-            return true
         }
 
         if (event.action == KeyEvent.ACTION_DOWN && event.keyCode == KeyEvent.KEYCODE_DPAD_UP &&
