@@ -9,14 +9,14 @@
 | D-pad navigation, touch-mode-safe focus, hold-to-scroll | `ui/KeypadNavigation.kt`, `ui/Base.kt`, `ThreadActivity` |
 | Softkey bar + physical mapping wizard | `ui/Base.kt` (`Softkeys`), `ui/settings/Settings.kt` (`SoftkeyConfigActivity`) |
 | Key code, scan code, repeat, and device diagnostics | `ui/settings/Settings.kt` (`SoftkeyConfigActivity`) |
-| Send-on-left layout | `ThreadActivity.applyComposeButtonLayout`, `ComposeActivity.updateComposeSoftkeys` |
+| Message editor, OK to send, shared Options menu | `ui/KeypadEditText.kt`, `ui/ComposeOptions.kt`, `ComposeActivity`, `ThreadActivity` |
 | T9 contact matching | `ui/MainActivity.kt` suggestion list + `util/ContactsHelper` |
 | Message windowing + loading banner | `ThreadActivity` + `MessageAdapter` |
 | Bubble styles, accent bar, dark theme | `ui/MessageAdapter.kt` (drawables), `util/Prefs` |
 | Chat backgrounds, per-convo tones | Customize menu (both menus), `SoundDialog` |
 | Group modes (group-MMS vs broadcast) | set at compose; `Repo.sendText/sendAttachment`, `Sender` |
 | Per-recipient delivered/read | `recipientStatuses` (see MESSAGING-PIPELINE) |
-| Attachments (photo/video/contact/audio/file/gallery/emoji) | `AttachOrPaste`, `ThreadActivity.pickAttachment`, `ui/EmojiPicker`, `util/MimeExt` |
+| Attachments (photo/video/contact/audio/file/gallery/emoji) | `ComposeOptions`, `ComposeActivity.pickAttachment`, `ThreadActivity.pickAttachment`, `ui/EmojiPicker`, `util/MimeExt` |
 | Video compression (auto, fits carrier MMS cap) | `util/VideoCompressor` (surface-to-surface MediaCodec; AAC passthrough; failure = original path) |
 | Picture viewer + original-resolution tiled zoom (private files, no Gallery copies) | `ui/MediaViewerActivity.kt`, `ui/DetailImageView.kt` |
 | Save to gallery/Downloads/SD | `ui/Saver.kt` (+ MMS settings switch) |

@@ -1,6 +1,7 @@
 package io.github.theonionsarewatching.nova.ui
 
 import android.content.Context
+import android.text.Selection
 import android.util.AttributeSet
 import android.view.KeyEvent
 import android.view.inputmethod.BaseInputConnection
@@ -19,6 +20,45 @@ class KeypadEditText @JvmOverloads constructor(
     private var downPressTime = Long.MIN_VALUE
     private var downPressEventTime = Long.MIN_VALUE
     private var imeOwnsDownPress = false
+    private var centerPressTime = Long.MIN_VALUE
+    private var centerPressEventTime = Long.MIN_VALUE
+    private var imeOwnsCenterPress = false
+
+    /** Keep the editor as the last focus stop; Enter still inserts a newline. */
+    internal fun handleComposeKey(event: KeyEvent, onSend: () -> Unit): Boolean {
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (deferDownToIme(event)) return false
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    val content = text
+                    val lines = layout
+                    if (content != null && lines != null) {
+                        if (event.isShiftPressed) Selection.extendDown(content, lines)
+                        else Selection.moveDown(content, lines)
+                    }
+                }
+                // At the last line Down stays here, without letting the IME
+                // convert it into a newline or Android move focus to a label.
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_CENTER -> {
+                val newPress = event.downTime != centerPressTime ||
+                    (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+                        event.eventTime != centerPressEventTime)
+                if (newPress) {
+                    centerPressTime = event.downTime
+                    centerPressEventTime = event.eventTime
+                    imeOwnsCenterPress = hasImeComposingText()
+                }
+                // Selection owns the entire press, including repeats/release
+                // delivered after the keyboard removes its composing spans.
+                if (imeOwnsCenterPress) return false
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) onSend()
+                return true
+            }
+        }
+        return false
+    }
 
     internal fun deferDownToIme(event: KeyEvent): Boolean {
         if (event.keyCode != KeyEvent.KEYCODE_DPAD_DOWN) return false

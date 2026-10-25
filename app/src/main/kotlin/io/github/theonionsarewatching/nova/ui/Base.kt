@@ -328,61 +328,6 @@ abstract class BaseActivity : AppCompatActivity() {
         android.content.ClipboardManager.OnPrimaryClipChangedListener { onClipboardChanged() }
 }
 
-/** When the clipboard holds text and a compose box is in play, "Attach"
- *  becomes an Options menu offering Attach and Paste (with a short preview of
- *  what would be pasted). With an empty clipboard it goes straight to attach. */
-object AttachOrPaste {
-    fun open(
-        activity: BaseActivity,
-        target: android.widget.EditText,
-        onAttach: () -> Unit,
-        onRecord: (() -> Unit)? = null
-    ) {
-        val clip = activity.clipboardText()
-        if (clip.isNullOrBlank() && onRecord == null) { onAttach(); return }
-        val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
-        val column = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-        }
-        var dialog: android.app.AlertDialog? = null
-        fun row(label: String, action: () -> Unit): android.widget.TextView =
-            android.widget.TextView(activity).apply {
-                text = label
-                textSize = 16f
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-                isFocusable = true
-                ThemeUtils.applyFocusHighlight(this)
-                setOnClickListener { dialog?.dismiss(); action() }
-            }
-        column.addView(row(activity.getString(R.string.softkey_attach)) { onAttach() })
-        if (onRecord != null) {
-            column.addView(row(activity.getString(R.string.attach_menu_record)) { onRecord() })
-        }
-        if (!clip.isNullOrBlank()) column.addView(row(activity.getString(R.string.paste)) {
-            val start = target.selectionStart.coerceAtLeast(0)
-            val end = target.selectionEnd.coerceAtLeast(0)
-            target.text.replace(minOf(start, end), maxOf(start, end), clip)
-            target.requestFocus()
-        })
-        // a glimpse of what Paste would insert — a few lines, never the whole thing
-        if (!clip.isNullOrBlank()) column.addView(android.widget.TextView(activity).apply {
-            text = clip
-            textSize = 12f
-            setTextColor(android.graphics.Color.GRAY)
-            maxLines = 3
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(dp(14), 0, dp(14), dp(8))
-        })
-        dialog = android.app.AlertDialog.Builder(activity)
-            .setView(column)
-            .setNegativeButton(android.R.string.cancel, null)
-            // a stray MENU event must never dismiss this menu (Sonim XP3plus)
-            .setOnKeyListener { _, keyCode, _ -> keyCode == KeyEvent.KEYCODE_MENU }
-            .show()
-    }
-}
-
 /** Softkey bar controller: labels + actions for left / center / right, device-profile aware. */
 class Softkeys(private val activity: BaseActivity, private val binding: ViewSoftkeyBarBinding) {
 
@@ -391,12 +336,18 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
     private var rightAction: (() -> Unit)? = null
     private var menuAction: (() -> Unit)? = null
     private val prefs = Prefs.get(activity)
+    private var navigationFocusable: Boolean? = null
+
+    fun setNavigationFocusable(enabled: Boolean?) {
+        navigationFocusable = enabled
+        refreshVisibility()
+    }
 
     init {
         binding.root.visibility = if (shouldShow()) View.VISIBLE else View.GONE
-        binding.softLeft.setOnClickListener { leftAction?.invoke() }
-        binding.softCenter.setOnClickListener { centerAction?.invoke() }
-        binding.softRight.setOnClickListener { rightAction?.invoke() }
+        binding.softLeft.setOnClickListener { if (binding.softLeft.isClickable) leftAction?.invoke() }
+        binding.softCenter.setOnClickListener { if (binding.softCenter.isClickable) centerAction?.invoke() }
+        binding.softRight.setOnClickListener { if (binding.softRight.isClickable) rightAction?.invoke() }
     }
 
     fun shouldShow(): Boolean = when (prefs.softkeyMode) {
@@ -422,9 +373,10 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
         binding.root.visibility = if (shouldShow()) View.VISIBLE else View.GONE
         // optional: let the D-pad land on the on-screen softkeys (off by default;
         // it inserts three extra focus stops into every screen's navigation)
-        val focusable = prefs.softkeysFocusable
+        val focusable = navigationFocusable ?: prefs.softkeysFocusable
         listOf(binding.softLeft, binding.softCenter, binding.softRight).forEach { v ->
             v.isFocusable = focusable
+            if (!focusable) v.isFocusableInTouchMode = false
         }
         updateClickability()
         if (focusable && binding.softLeft.getTag(R.id.softkey_focus_wired) == null) {
@@ -448,9 +400,9 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
 
     private fun updateClickability() {
         val shown = shouldShow()
-        binding.softLeft.isClickable = shown && leftAction != null
-        binding.softCenter.isClickable = shown && centerAction != null
-        binding.softRight.isClickable = shown && rightAction != null
+        binding.softLeft.isClickable = shown && binding.softLeft.text.isNotBlank() && leftAction != null
+        binding.softCenter.isClickable = shown && binding.softCenter.text.isNotBlank() && centerAction != null
+        binding.softRight.isClickable = shown && binding.softRight.text.isNotBlank() && rightAction != null
     }
 
     /** Returns true when the event was consumed as a softkey. MENU maps to the menu action
@@ -483,12 +435,42 @@ class Softkeys(private val activity: BaseActivity, private val binding: ViewSoft
         cancelPendingMenu()
     }
 
+    /** Observe the native left key without consuming it; its MENU echo is ours to suppress. */
+    fun handleComposeOptionsKey(event: KeyEvent): Boolean =
+        (event.keyCode == prefs.softkeyRightCode || event.keyCode == KeyEvent.KEYCODE_MENU ||
+            (event.keyCode == prefs.softkeyLeftCode && leftAction == null)) && handleKey(event)
+
+    private fun observePassthroughKey(event: KeyEvent) {
+        // A real MENU mapped as the native left key must remain available to
+        // the keyboard. Only distinct physical codes can identify a MENU echo.
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) return
+        val press = event.downTime to event.deviceId
+        val matched = when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) keyDowns[event.keyCode] = press
+                keyDowns[event.keyCode] == press
+            }
+            KeyEvent.ACTION_UP -> keyDowns.remove(event.keyCode) == press
+            else -> false
+        }
+        if (matched) {
+            lastNonMenuActionAt = android.os.SystemClock.uptimeMillis()
+            cancelPendingMenu()
+        }
+    }
+
     fun handleKey(event: KeyEvent): Boolean {
         // softkeys act ONLY while the bar is shown. With the bar off the
         // physical keys used to keep firing their invisible actions (right
         // softkey silently sent) — user-reported as wrong. The capture screen
         // is unaffected: it reads raw key events in its own dispatch.
         if (!shouldShow()) { resetKeyState(); return false }
+        if ((event.keyCode == prefs.softkeyLeftCode && leftAction == null) ||
+            (event.keyCode == prefs.softkeyRightCode && rightAction == null)
+        ) {
+            observePassthroughKey(event)
+            return false
+        }
         if (event.keyCode == KeyEvent.KEYCODE_MENU &&
             event.keyCode != prefs.softkeyLeftCode &&
             event.keyCode != prefs.softkeyRightCode &&

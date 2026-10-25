@@ -135,8 +135,6 @@ class Prefs(context: Context) {
     val requestReadReports: Boolean get() = sp.getBoolean("request_read_reports", false)
     // answer other people's read-report requests when the user reads
     val respondReadReports: Boolean get() = sp.getBoolean("respond_read_reports", true)
-    // center D-pad key = Send while the cursor is in the message box
-    val sendOnLeft: Boolean get() = sp.getBoolean("send_on_left", false)
     val saveToSd: Boolean get() = sp.getBoolean("save_to_sd", false)
     var autoRetryIds: Set<String>
         get() = sp.getStringSet("auto_retry_ids", emptySet()) ?: emptySet()

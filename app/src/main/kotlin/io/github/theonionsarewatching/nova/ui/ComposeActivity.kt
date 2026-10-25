@@ -17,7 +17,6 @@ import io.github.theonionsarewatching.nova.data.Repo
 import io.github.theonionsarewatching.nova.databinding.ActivityComposeBinding
 import io.github.theonionsarewatching.nova.databinding.ItemSuggestionBinding
 import io.github.theonionsarewatching.nova.util.ContactsHelper
-import io.github.theonionsarewatching.nova.util.Prefs
 import io.github.theonionsarewatching.nova.util.PhoneUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,13 +52,7 @@ class ComposeActivity : BaseActivity() {
 
         binding.btnBack.setOnClickListener { goBack() }
         binding.btnGroupMode.setOnClickListener { pickGroupMode() }
-        binding.btnStart.setOnClickListener { start() }
-        binding.btnSchedule.setOnClickListener { startScheduled() }
-        binding.btnComposeAttach.setOnClickListener {
-            AttachOrPaste.open(this, binding.bodyInput,
-                onAttach = { pickAttachment() },
-                onRecord = { recordAudioAttachment() })
-        }
+        binding.btnOptions.setOnClickListener { composeOptions() }
         binding.attachChip.setOnClickListener { manageAttachments() }
 
         binding.recipientInput.addTextChangedListener(object : TextWatcher {
@@ -69,26 +62,18 @@ class ComposeActivity : BaseActivity() {
             override fun afterTextChanged(s: Editable?) { filterSuggestions(s?.toString().orEmpty()) }
         })
         binding.recipientInput.setOnEditorActionListener { _, _, _ -> addTypedRecipient(); true }
+        binding.recipientInput.preImeKeyHandler = { softkeys?.handleComposeOptionsKey(it) == true }
 
         softkeys = Softkeys(this, binding.softkeyBar).also { updateComposeSoftkeys(it) }
-        if (softkeys?.shouldShow() == true) {
-            // softkeys carry Attach + Send — hide only those; the schedule
-            // button has no softkey slot, so it stays visible for everyone
-            binding.btnComposeAttach.visibility = View.GONE
-            binding.btnStart.visibility = View.GONE
-        }
-
-        ThemeUtils.applyFocusHighlightRound(
-            binding.btnBack, binding.btnComposeAttach, binding.btnSchedule
-        )
+        softkeys?.setNavigationFocusable(false)
+        ThemeUtils.applyFocusHighlightRound(binding.btnBack, binding.btnOptions)
         binding.recipientChips.isFocusable = true
         binding.recipientChips.isFocusableInTouchMode = false
-        ThemeUtils.applyButtonFocus(binding.btnStart)
         ThemeUtils.applyFocusHighlight(
             binding.recipientInput, binding.recipientChips,
             binding.btnGroupMode, binding.attachChip
         )
-        configureComposeActionFocus()
+        binding.bodyInput.setOnFocusChangeListener { _, _ -> updateComposeSoftkeys() }
         binding.bodyInput.preImeKeyHandler = ::handleBodyKey
         binding.bodyInput.setOnKeyListener { _, _, event -> handleBodyKey(event) }
         // compose body: NO focus ring at all (it never tracked the text
@@ -522,7 +507,7 @@ class ComposeActivity : BaseActivity() {
     private var savedAttachChipVis = View.GONE
 
     /** The suggestion list takes the screen down to the BOTTOM edge: message
-     *  box, action row, group-mode button, attachment chip, and softkey bar
+     *  box, group-mode button, attachment chip, and softkey bar
      *  all step aside while it's up, and return to their prior state after. */
     private fun setSuggestionsShown(shown: Boolean) {
         val wasShown = binding.suggestionList.visibility == View.VISIBLE
@@ -537,13 +522,11 @@ class ComposeActivity : BaseActivity() {
             // the ScrollView carries layout_weight=1 — IT is what held half
             // the screen while its content hid; the whole thing steps aside
             binding.bodyScroll.visibility = View.GONE
-            binding.sendRow.visibility = View.GONE
             binding.btnGroupMode.visibility = View.GONE
             binding.attachChip.visibility = View.GONE
             binding.softkeyBar.root.visibility = View.GONE
         } else {
             binding.bodyScroll.visibility = View.VISIBLE
-            binding.sendRow.visibility = View.VISIBLE
             binding.btnGroupMode.visibility = savedGroupModeVis
             binding.attachChip.visibility = savedAttachChipVis
             binding.softkeyBar.root.visibility =
@@ -641,9 +624,10 @@ class ComposeActivity : BaseActivity() {
             val chipsVisible = binding.recipientChips.isShown && recipients.isNotEmpty()
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    if (binding.btnBack.hasFocus() && chipsVisible &&
-                        KeypadNavigation.focus(binding.recipientChips)
-                    ) return true
+                    if (binding.btnBack.hasFocus() || binding.btnOptions.hasFocus()) {
+                        val target = if (chipsVisible) binding.recipientChips else binding.recipientInput
+                        if (KeypadNavigation.focus(target)) return true
+                    }
                     if (binding.recipientChips.hasFocus() &&
                         KeypadNavigation.focus(binding.recipientInput)
                     ) return true
@@ -669,7 +653,6 @@ class ComposeActivity : BaseActivity() {
                     if (binding.attachChip.hasFocus() &&
                         KeypadNavigation.focus(binding.bodyInput)
                     ) return true
-                    if (binding.btnSchedule.hasFocus() && focusBottomComposeAction()) return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP -> {
                     if (binding.recipientInput.hasFocus() && chipsVisible &&
@@ -699,94 +682,17 @@ class ComposeActivity : BaseActivity() {
                             if (KeypadNavigation.focus(target)) return true
                         }
                     }
-                    if (binding.btnSchedule.hasFocus() &&
-                        KeypadNavigation.focus(binding.bodyInput)
-                    ) return true
-                    if (bottomComposeActionHasFocus() &&
-                        KeypadNavigation.focus(binding.btnSchedule)
-                    ) return true
-                }
-                KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    if (moveBottomComposeAction(-1)) return true
-                }
-                KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (moveBottomComposeAction(1)) return true
                 }
             }
         }
         return super.dispatchKeyEvent(event)
     }
 
-    private fun handleBodyKey(event: KeyEvent): Boolean = when (event.keyCode) {
-        KeyEvent.KEYCODE_DPAD_DOWN -> {
-            if (binding.bodyInput.deferDownToIme(event)) false
-            else KeypadNavigation.handleMove(event, KeyEvent.KEYCODE_DPAD_DOWN) {
-                if (softkeys?.shouldShow() == true) {
-                    if (Prefs.get(this).sendOnLeft) binding.softkeyBar.softLeft
-                    else binding.softkeyBar.softRight
-                } else {
-                    binding.btnStart
-                }
-            }
-        }
-        KeyEvent.KEYCODE_DPAD_CENTER -> {
-            if (binding.bodyInput.hasImeComposingText()) {
-                false
-            } else {
-                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                    start()
-                }
-                true
-            }
-        }
-        else -> false
+    private fun handleBodyKey(event: KeyEvent): Boolean {
+        if (prefs.touchMode) return false
+        if (softkeys?.handleComposeOptionsKey(event) == true) return true
+        return binding.bodyInput.handleComposeKey(event) { start() }
     }
-
-    override fun onResume() {
-        super.onResume()
-        if (::binding.isInitialized) configureComposeActionFocus()
-    }
-
-    private fun configureComposeActionFocus() {
-        val enabled = softkeys?.shouldShow() == true
-        listOf(binding.btnSchedule, binding.btnComposeAttach, binding.btnStart).forEach { button ->
-            button.isFocusable = true
-            button.isFocusableInTouchMode = true
-        }
-        listOf(binding.softkeyBar.softLeft, binding.softkeyBar.softRight).forEach { button ->
-            button.isFocusable = enabled
-            button.isFocusableInTouchMode = enabled
-            button.isClickable = enabled
-        }
-        binding.softkeyBar.softCenter.isFocusable = false
-        if (enabled) {
-            ThemeUtils.applyFocusHighlight(
-                binding.softkeyBar.softLeft, binding.softkeyBar.softRight
-            )
-        }
-    }
-
-    private fun focusBottomComposeAction(): Boolean {
-        val target = bottomComposeActions().firstOrNull()
-        return KeypadNavigation.focus(target)
-    }
-
-    private fun moveBottomComposeAction(direction: Int): Boolean {
-        val actions = bottomComposeActions()
-        val current = actions.indexOfFirst { it.hasFocus() }
-        if (current < 0) return false
-        val next = (current + direction).coerceIn(actions.indices)
-        return next == current || KeypadNavigation.focus(actions[next])
-    }
-
-    private fun bottomComposeActions(): List<View> =
-        if (softkeys?.shouldShow() == true) {
-            listOf(binding.softkeyBar.softLeft, binding.softkeyBar.softRight)
-                .filter { it.isShown && it.isFocusable && it.isEnabled && it.text.isNotBlank() }
-        } else {
-            listOf(binding.btnComposeAttach, binding.btnStart)
-                .filter { it.isShown && it.isFocusable && it.isEnabled }
-        }
 
     private fun focusSuggestion(position: Int): Boolean {
         if (position !in 0 until (binding.suggestionList.adapter?.itemCount ?: 0)) return false
@@ -798,10 +704,6 @@ class ComposeActivity : BaseActivity() {
         }
         return true
     }
-
-    private fun bottomComposeActionHasFocus(): Boolean =
-        binding.btnComposeAttach.hasFocus() || binding.btnStart.hasFocus() ||
-            binding.softkeyBar.softLeft.hasFocus() || binding.softkeyBar.softRight.hasFocus()
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -909,33 +811,25 @@ class ComposeActivity : BaseActivity() {
             .show()
     }
 
-    private fun updateComposeSoftkeys(sk: Softkeys? = softkeys) {
-        val attachLabel = if (clipboardText().isNullOrBlank())
-            getString(R.string.softkey_attach) else getString(R.string.softkey_options)
-        val attachAction = { AttachOrPaste.open(this, binding.bodyInput,
+    private fun composeOptions() {
+        ComposeOptions.show(this, binding.bodyInput,
+            onSend = { start() },
             onAttach = { pickAttachment() },
-            onRecord = { recordAudioAttachment() }) }
-        if (Prefs.get(this).sendOnLeft) {
-            // send-on-left: mirrored — Send on the left softkey, attach on the
-            // right; the on-screen + also remains next to the schedule button
-            sk?.set(
-                getString(R.string.softkey_send), null, attachLabel,
-                onLeft = { start() },
-                onCenter = null,
-                onRight = attachAction
-            )
-        } else {
-            sk?.set(
-                attachLabel, null, getString(R.string.softkey_send),
-                onLeft = attachAction,
-                onCenter = null,
-                onRight = { start() }
-            )
-        }
+            onRecord = { recordAudioAttachment() },
+            onSchedule = { startScheduled() })
     }
 
-    override fun onClipboardChanged() {
-        runOnUiThread { updateComposeSoftkeys() }
+    private fun updateComposeSoftkeys(sk: Softkeys? = softkeys) {
+        sk?.set(
+            null,
+            if (binding.bodyInput.hasFocus()) getString(R.string.softkey_send) else null,
+            getString(R.string.softkey_options),
+            onCenter = if (binding.bodyInput.hasFocus()) {
+                { if (binding.bodyInput.hasFocus() && !binding.bodyInput.hasImeComposingText()) start() }
+            } else null,
+            onRight = { composeOptions() },
+            onMenu = { composeOptions() }
+        )
     }
 
     private fun goBack() {
